@@ -5,16 +5,22 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
-//USING nbfc-linux 
+#include <assert.h>
+
+/*** dependancies ***/
+#define DEPENDANCIES "nbfc-linux, gnuplot" 
+
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define CONTROL_MESSAGE  "CTRL+ M: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT\n"
+#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT\n"
 
 //colors for cli output
 #define WHITE "\033[0;39m"
@@ -108,30 +114,34 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+
 /*** input ***/
 void* processKeypress(){
-  char c = readKey();
-
-  switch (c) {
-    case CTRL_KEY('q'):
-      printf("\x1b[2J");
-      printf("\x1b[H");
-      exit(0);
-      break;
-    case CTRL_KEY('m'):
-      system("/bin/nbfc set -s 100");
-      break;
-    case CTRL_KEY('a'):
-      system("/bin/nbfc set -a");
-      break;
-    case CTRL_KEY('r'):
-      if (system("/bin/nbfc restart") != 0){//solves some bug that prevents restart
-          system("/bin/nbfc stop");
-          system("/bin/nbfc start");
-      };
-      break;
+  char c;
+  while((c = readKey()) != EOF) {
+    switch (c) {
+      case CTRL_KEY('q'):
+        printf("\x1b[2J");
+        printf("\x1b[H");
+        exit(0);
+        break;
+      case CTRL_KEY('b'):
+        if(system("/bin/nbfc set -s 100") != 0) {
+        };
+        break;
+      case CTRL_KEY('a'):
+        if(system("/bin/nbfc set -a") != 0) {
+        };
+        break;
+      case CTRL_KEY('r'):
+        if (system("/bin/nbfc restart") != 0){//solves some bug that prevents restart
+            system("/bin/nbfc stop");
+            system("/bin/nbfc start");
+        };
+        break;
+    }
   }
-  return NULL;
+ return NULL;
 }
 
 /*** data ***/
@@ -142,7 +152,7 @@ char* getNBFCData() {
   char* output = NULL;
   size_t total_size = 0;
   //open pipe
-  if ( NULL == (fpipe = popen(command, "r"))){
+  if (NULL == (fpipe = popen(command, "r"))){
     perror("popen(). failed.");
     exit(EXIT_FAILURE);
   }
@@ -183,13 +193,13 @@ char* getLastToken (char* str, const char *delim) {
 }
 char* parseNBFCData(int key) {
   const char* raw_data = getNBFCData();
-  char* lines[16];
+  char* lines[17];
   char line[64];
   int line_count = 0;
   const char* start = raw_data;
-  char* data_table[16] = {NULL};
+  char* data_table[17] = {NULL};
   //split output string into lines
-  while(*start && line_count < 16) {
+  while(*start && line_count < 17) {
     const char* end = strchr(start, '\n');//strchr to find first occurance of \n i.e end of a line
     if (end) {
       size_t length = end - start;
@@ -215,13 +225,37 @@ char* parseNBFCData(int key) {
   return data_table[key];
 }
 
-void callParse(){
-  while(1){
-  printf("\r%s", parseNBFCData(GPU_CURRENT_FAN_SPEED));
-  }
+/*void getTemperatureData(){
+  float cpu_temp = atof(parseNBFCData(TEMP));
+
+}
+*/
+
+void getFanSpeeds(double* buffer) {
+  double cpu_fan_speed = atof(parseNBFCData(CPU_CURRENT_FAN_SPEED))*atof(parseNBFCData(CPU_FAN_SPEED_STEPS))/100;
+  double gpu_fan_speed = atof(parseNBFCData(GPU_CURRENT_FAN_SPEED))*atof(parseNBFCData(GPU_FAN_SPEED_STEPS))/100;
+  buffer[0] = cpu_fan_speed;
+  buffer[1] = gpu_fan_speed;
 }
 
+void printFanSpeed(){
+  
+  printf("\n");
+  while(1){
+    double fan_speeds[2] = {0};
+    getFanSpeeds(fan_speeds);
+    printf("\r%.0f    %.0f", fan_speeds[0], fan_speeds[1]);
+    fflush(stdout);
+    usleep(100000);
+  }
+}
 /*** output ***/
+void drawTempPlot(char* data) {
+  //data needs to be formatted like this: xvlaue    yvalue\n xvalue   yvalue etc..
+  char command[256];
+  snprintf(command, sizeof(command), "'%s' | gnuplot -p -e 'set terminal dumb; set xlabel 'Time'; set ylabel 'Temp'; plot '-' using 1:2 with lines'; pause 1; reread", data);
+  system(command);
+}
 void drawSpeedometer(size_t count, size_t max) {
 
   //write(STDOUT_FILENO, "█\r\n", 3);
@@ -243,18 +277,21 @@ void drawSpeedometer(size_t count, size_t max) {
   }
   
 void* refreshScreen(){//needed to modify to work with pthread i.e. void* 
+  while (1) {
   printf("\x1b[2J");
   printf("\x1b[H");
   
   printf(CONTROL_MESSAGE);
-  callParse();
-  drawSpeedometer(50, 100);
+  //drawSpeedometer(50, 100);
 
-
+  printFanSpeed();
   printf("\x1b[H");
 
+  usleep(500000);
+}
   return NULL;
 }
+
 
 
 /*** init ***/
@@ -265,13 +302,11 @@ int main() {
   enableRawMode();
   initWindow();
   pthread_t key_thread, print_thread;
-  while (1) {
-    //this creates two threads for reading keys and printing to terminal
-    pthread_create(&key_thread, NULL, processKeypress, NULL);
-    pthread_create(&print_thread, NULL, refreshScreen, NULL);
-    //wait for the threads to finish
-    pthread_join(key_thread, NULL);
-    pthread_join(print_thread, NULL);
-  }
+  //this creates two threads for reading keys and printing to terminal
+  pthread_create(&key_thread, NULL, processKeypress, NULL);
+  pthread_create(&print_thread, NULL, refreshScreen, NULL);
+  //wait for the threads to finish
+  pthread_join(key_thread, NULL);
+  pthread_join(print_thread, NULL);
  return 0;
 }
