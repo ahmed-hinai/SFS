@@ -1,3 +1,7 @@
+//WORKING ON THE PLOT. NEED HISTORY!!
+
+
+
 /*** includes ***/
 #include <unistd.h>
 #include <termios.h>
@@ -12,7 +16,6 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
-#include <assert.h>
 
 /*** dependancies ***/
 #define DEPENDANCIES "nbfc-linux, gnuplot" 
@@ -238,24 +241,42 @@ void getFanSpeeds(double* buffer) {
   buffer[1] = gpu_fan_speed;
 }
 
-void printFanSpeed(){
-  
-  printf("\n");
-  while(1){
-    double fan_speeds[2] = {0};
-    getFanSpeeds(fan_speeds);
-    printf("\r%.0f    %.0f", fan_speeds[0], fan_speeds[1]);
-    fflush(stdout);
-    usleep(100000);
-  }
-}
+
 /*** output ***/
-void drawTempPlot(char* data) {
-  //data needs to be formatted like this: xvlaue    yvalue\n xvalue   yvalue etc..
+void printFanSpeed() {
+  printf("\n");
+  double fan_speeds[2] = {0};
+  int space_len = 10;
+  getFanSpeeds(fan_speeds);
+  
   char command[256];
-  snprintf(command, sizeof(command), "'%s' | gnuplot -p -e 'set terminal dumb; set xlabel 'Time'; set ylabel 'Temp'; plot '-' using 1:2 with lines'; pause 1; reread", data);
-  system(command);
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f shadow -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
+
+  FILE *fp = popen(command, "r");
+  if (fp == NULL) {
+      perror("popen failed");
+      return;
+  }
+
+  char buffer[512];
+  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+      printf("%s", buffer);
+    }
+  
+  pclose(fp);
 }
+
+
+void drawTempPlot(char* data) {
+    // Format: xvalue    yvalue\n xvalue   yvalue ...
+    char command[512]; // Increased size to accommodate the command
+    snprintf(command, sizeof(command),
+        "echo \"%s\" | gnuplot -p -e \"set terminal dumb 80 12; set style fill solid 0.0;unset grid; set pointsize 0.5; unset border; set key off; set xlabel 'Time'; set ylabel 'Temp'; plot '-' using 1:2 with lines; pause 1\"",
+        data);
+    
+    system(command);
+}
+
 void drawSpeedometer(size_t count, size_t max) {
 
   //write(STDOUT_FILENO, "█\r\n", 3);
@@ -277,17 +298,40 @@ void drawSpeedometer(size_t count, size_t max) {
   }
   
 void* refreshScreen(){//needed to modify to work with pthread i.e. void* 
+  int cols = W.screencols;
+  int rows = W.screenrows; 
+  int control_len = strlen(CONTROL_MESSAGE);
+  double time_elapsed = 0;
+  char data_point[1024];
+  //snprintf(data_point, sizeof(data_point), "%f   %f", time_elapsed, atof(parseNBFCData(TEMP)));
   while (1) {
-  printf("\x1b[2J");
-  printf("\x1b[H");
-  
+  //print control message
+  printf("\x1b[1J");
+  printf("\x1b[1;%dH", (cols - control_len)/2); 
   printf(CONTROL_MESSAGE);
-  //drawSpeedometer(50, 100);
-
-  printFanSpeed();
+  //print fan speed
+  int line_count = 0;
+  if (line_count < rows - 2) {
+    printf("\033[%d;1H", line_count + 2);
+    printFanSpeed();
+    line_count++;
+    }
+  //print temp/util graph
+  line_count = 0;
+  printf("\033[%d;1H", rows);
+  char new_data[24];
+  snprintf(new_data, sizeof(new_data), "%f   %f", time_elapsed, atof(parseNBFCData(TEMP)));
+  strncat(data_point, new_data, sizeof(data_point) - strlen(data_point) - 1);
+  if (line_count < rows){
+    printf("\033[%d;1H", line_count + 4);
+    drawTempPlot(data_point); 
+    line_count++;
+    }
+  printf("\033[%d;1H", rows);
   printf("\x1b[H");
-
-  usleep(500000);
+  fflush(stdout);
+  usleep(1000000);
+  time_elapsed++;
 }
   return NULL;
 }
