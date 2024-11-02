@@ -232,6 +232,34 @@ void getFanSpeeds(double* buffer) {
   buffer[1] = gpu_fan_speed;
 }
 
+void getGpuTemp(char* temp){
+  char buffer[4];
+  FILE* fp = popen("nvidia-smi -q | awk '/^ *GPU Current Temp/ {print $(NF-1)}'","r");
+  if (fp == NULL){
+    perror("popen(). failed");
+    return;
+  }
+  while(fgets(buffer, sizeof(buffer), fp) != NULL){
+    strncpy(temp, buffer, 4);
+  }
+  pclose(fp);
+}
+
+void getGpuUtil(char* util){
+  char buffer[4];
+  FILE* fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+  if (fp == NULL){
+    perror("popen(). failed");
+    return;
+  }
+  while(fgets(buffer, sizeof(buffer), fp) != NULL){
+    strncpy(util, buffer, 4);
+
+  }
+  pclose(fp);
+
+}
+
 
 /*** output ***/
 void printFanSpeed() {
@@ -243,7 +271,7 @@ void printFanSpeed() {
   char command[256];
   snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f shadow -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
 
-  FILE *fp = popen(command, "r");
+  FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
       return;
@@ -270,32 +298,34 @@ void drawTempPlot(float Temp, int col, int current_row) {
   int block_diff = max_block_height - blocks;
 
 
-  int col_max = W.screencols - 2;
-  for (int i = 2; i < col_max; i++){
+  printf("\x1b[%d;%dH%d", current_row + 3, 1, blocks);
+  int col_max = W.screencols - 3;
+  int col_min = 4;
+  for (int i = col_min; i < col_max; i++){
     printf("\x1b[%d;%dH─",current_row + 1, i);
     printf("\x1b[%d;%dH─",current_row + 12, i);
   }
-  for (int i = 0; i <= max_blocks; i++) { // Use < instead of <= to avoid an extra line
+  for (int i = 0; i <= max_blocks; i++) { 
     if (i == 0){
-      printf("\x1b[%d;2H┌",i+current_row+1);
+      printf("\x1b[%d;%dH┌",i+current_row+1, col_min);
       printf("\x1b[%d;%dH┐",i+ current_row + 1, col_max);
 
     }
     if (i == max_blocks){
-    printf("\x1b[%d;2H└",i+ current_row + 2);
+    printf("\x1b[%d;%dH└",i+ current_row + 2, col_min);
     printf("\x1b[%d;%dH┘",i+ current_row + 2, col_max);
     }
     else {
 
-      printf("\x1b[%d;2H│",i+ current_row + 2);
+      printf("\x1b[%d;%dH│",i+ current_row + 2, col_min);
       printf("\x1b[%d;%dH│",i+ current_row + 2, col_max);
     }
     if (i < block_diff){
-      printf("\x1b[%d;%dH",i + current_row + 1, col); // Move to the correct row and column for each asterisk
+      printf("\x1b[%d;%dH",i + current_row + 1, col);
       }
      else{
 
-      printf("\x1b[%d;%dH░",i + current_row + 1, col); // Move to the correct row and column for each asterisk
+      printf("\x1b[%d;%dH░",i + current_row + 1, col); 
     }
   }
 }
@@ -327,9 +357,11 @@ void* refreshScreen(){//needed to modify to work with pthread i.e. void*
   int cols = W.screencols;
   int rows = W.screenrows; 
   int control_len = strlen(CONTROL_MESSAGE);
-  int padding = 2;
-  int col_count_cpu = 3;
-  int col_count_gpu = 3;
+  int col_count_min = 5;
+  int padding = col_count_min - 1;
+  int col_count_cpu = col_count_min;
+  int col_count_gpu = col_count_min;
+  char gpu_temp[4];
   while (1) {
     //print control message
     printf("\x1b[1J");
@@ -342,23 +374,24 @@ void* refreshScreen(){//needed to modify to work with pthread i.e. void*
     printf("\x1b[%d;1H", rows);
     //print temp/util graph
     //printf("\x1b[9;%dH", col_count);
-    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, 10); 
+    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, 9); 
     if (col_count_cpu < cols - padding) {
       col_count_cpu++;
     } else {
-      col_count_cpu = 3;
-      printf("\x1b[11;3H");
+      col_count_cpu = col_count_min;
+      printf("\x1b[10;%dH", col_count_cpu);
       for (int i = 0; i < 10; i++){
         printf("\x1b[B\x1b[K");
       } 
     }
 
-    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_gpu, rows - 22); 
+    getGpuTemp(gpu_temp);
+    drawTempPlot(atof(gpu_temp), col_count_gpu, rows - 22); 
     if (col_count_gpu < cols - padding) {
       col_count_gpu++;
     } else {
-      col_count_gpu = 3;
-      printf("\x1b[%d;3H", rows - 21);
+      col_count_gpu = col_count_min;
+      printf("\x1b[%d;%dH", rows - 21, col_count_gpu);
       for (int i = 0; i < 10; i++){
         printf("\x1b[B\x1b[K");
       } 
