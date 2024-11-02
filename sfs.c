@@ -1,7 +1,3 @@
-//WORKING ON THE PLOT. NEED HISTORY!!
-
-
-
 /*** includes ***/
 #include <unistd.h>
 #include <termios.h>
@@ -228,11 +224,6 @@ char* parseNBFCData(int key) {
   return data_table[key];
 }
 
-/*void getTemperatureData(){
-  float cpu_temp = atof(parseNBFCData(TEMP));
-
-}
-*/
 
 void getFanSpeeds(double* buffer) {
   double cpu_fan_speed = atof(parseNBFCData(CPU_CURRENT_FAN_SPEED))*atof(parseNBFCData(CPU_FAN_SPEED_STEPS))/100;
@@ -266,16 +257,51 @@ void printFanSpeed() {
   pclose(fp);
 }
 
+//U+2591 	░ 	Light shade 
+//U+2592 	▒ 	Medium shade
+//U+2593 	▓ 	Dark shade 
+void drawTempPlot(float Temp, int col, int current_row) {
+  int blocks = (int)Temp;
+  if (blocks < 10){
+    blocks = 10;
+  }
+  int max_block_height = ((int)(blocks/10))*10 + 10;
+  int max_blocks = 10;
+  int block_diff = max_block_height - blocks;
 
-void drawTempPlot(char* data) {
-    // Format: xvalue    yvalue\n xvalue   yvalue ...
-    char command[512]; // Increased size to accommodate the command
-    snprintf(command, sizeof(command),
-        "echo \"%s\" | gnuplot -p -e \"set terminal dumb 80 12; set style fill solid 0.0;unset grid; set pointsize 0.5; unset border; set key off; set xlabel 'Time'; set ylabel 'Temp'; plot '-' using 1:2 with lines; pause 1\"",
-        data);
-    
-    system(command);
+
+  int col_max = W.screencols - 2;
+  for (int i = 2; i < col_max; i++){
+    printf("\x1b[%d;%dH─",current_row + 1, i);
+    printf("\x1b[%d;%dH─",current_row + 12, i);
+  }
+  for (int i = 0; i <= max_blocks; i++) { // Use < instead of <= to avoid an extra line
+    if (i == 0){
+      printf("\x1b[%d;2H┌",i+current_row+1);
+      printf("\x1b[%d;%dH┐",i+ current_row + 1, col_max);
+
+    }
+    if (i == max_blocks){
+    printf("\x1b[%d;2H└",i+ current_row + 2);
+    printf("\x1b[%d;%dH┘",i+ current_row + 2, col_max);
+    }
+    else {
+
+      printf("\x1b[%d;2H│",i+ current_row + 2);
+      printf("\x1b[%d;%dH│",i+ current_row + 2, col_max);
+    }
+    if (i < block_diff){
+      printf("\x1b[%d;%dH",i + current_row + 1, col); // Move to the correct row and column for each asterisk
+      }
+     else{
+
+      printf("\x1b[%d;%dH░",i + current_row + 1, col); // Move to the correct row and column for each asterisk
+    }
+  }
 }
+
+
+
 
 void drawSpeedometer(size_t count, size_t max) {
 
@@ -301,37 +327,45 @@ void* refreshScreen(){//needed to modify to work with pthread i.e. void*
   int cols = W.screencols;
   int rows = W.screenrows; 
   int control_len = strlen(CONTROL_MESSAGE);
-  double time_elapsed = 0;
-  char data_point[1024];
-  //snprintf(data_point, sizeof(data_point), "%f   %f", time_elapsed, atof(parseNBFCData(TEMP)));
+  int padding = 2;
+  int col_count_cpu = 3;
+  int col_count_gpu = 3;
   while (1) {
-  //print control message
-  printf("\x1b[1J");
-  printf("\x1b[1;%dH", (cols - control_len)/2); 
-  printf(CONTROL_MESSAGE);
-  //print fan speed
-  int line_count = 0;
-  if (line_count < rows - 2) {
-    printf("\033[%d;1H", line_count + 2);
+    //print control message
+    printf("\x1b[1J");
+    printf("\x1b[1;%dH", (cols - control_len)/2); 
+    printf(CONTROL_MESSAGE);
+    //print fan speed
+    printf("\x1b[3;1H");//move to third row
+    //printf("\x1b[1;32m"); <-- makes everything green!
     printFanSpeed();
-    line_count++;
+    printf("\x1b[%d;1H", rows);
+    //print temp/util graph
+    //printf("\x1b[9;%dH", col_count);
+    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, 10); 
+    if (col_count_cpu < cols - padding) {
+      col_count_cpu++;
+    } else {
+      col_count_cpu = 3;
+      printf("\x1b[11;3H");
+      for (int i = 0; i < 10; i++){
+        printf("\x1b[B\x1b[K");
+      } 
     }
-  //print temp/util graph
-  line_count = 0;
-  printf("\033[%d;1H", rows);
-  char new_data[24];
-  snprintf(new_data, sizeof(new_data), "%f   %f", time_elapsed, atof(parseNBFCData(TEMP)));
-  strncat(data_point, new_data, sizeof(data_point) - strlen(data_point) - 1);
-  if (line_count < rows){
-    printf("\033[%d;1H", line_count + 4);
-    drawTempPlot(data_point); 
-    line_count++;
+
+    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_gpu, rows - 22); 
+    if (col_count_gpu < cols - padding) {
+      col_count_gpu++;
+    } else {
+      col_count_gpu = 3;
+      printf("\x1b[%d;3H", rows - 21);
+      for (int i = 0; i < 10; i++){
+        printf("\x1b[B\x1b[K");
+      } 
     }
-  printf("\033[%d;1H", rows);
-  printf("\x1b[H");
-  fflush(stdout);
-  usleep(1000000);
-  time_elapsed++;
+    printf("\x1b[H");
+    fflush(stdout);
+    usleep(1000000);
 }
   return NULL;
 }
