@@ -262,14 +262,25 @@ void getGpuUtil(char* util){
 
 
 /*** output ***/
+void printHeader(){
+  int cols = W.screencols;
+  //int rows = W.screenrows;
+  int control_len = strlen(CONTROL_MESSAGE);
+  //print control message
+  printf("\x1b[2J");
+  printf("\x1b[1;%dH", (cols - control_len)/2); 
+  printf(CONTROL_MESSAGE);
+  printf("\x1b[2;1H");
+  fflush(stdout);
+}
+
+
 void printFanSpeed() {
-  printf("\n");
   double fan_speeds[2] = {0};
   int space_len = 10;
   getFanSpeeds(fan_speeds);
-  
   char command[256];
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f shadow -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f small -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
 
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
@@ -288,121 +299,106 @@ void printFanSpeed() {
 //U+2591 	░ 	Light shade 
 //U+2592 	▒ 	Medium shade
 //U+2593 	▓ 	Dark shade 
-void drawTempPlot(float Temp, int col, int current_row) {
+//braille ⠿ 
+void drawPlotBorders(int current_row, int max_lines){
+  int col_max = W.screencols - 3;
+  int col_min = 4;
+  printf("\x1b[%d;%dH┌",current_row, col_min);
+  printf("\x1b[%d;%dH┐",current_row, col_max);
+  printf("\x1b[%d;%dH└",current_row + max_lines, col_min);
+  printf("\x1b[%d;%dH┘",current_row + max_lines, col_max);
+  for (int i = col_min + 1; i < col_max; i++){
+    printf("\x1b[%d;%dH─",current_row, i);
+    printf("\x1b[%d;%dH─",current_row + max_lines, i);
+  }
+ for (int i = 1; i < max_lines; i++) { 
+    
+    printf("\x1b[%d;%dH│",i + current_row, col_min);
+    printf("\x1b[%d;%dH│",i + current_row, col_max);
+  }
+
+}
+void drawTempPlot(float Temp, int col, int current_row, int max_blocks) {
   int blocks = (int)Temp;
   if (blocks < 10){
     blocks = 10;
   }
   int max_block_height = ((int)(blocks/10))*10 + 10;
-  int max_blocks = 10;
   int block_diff = max_block_height - blocks;
 
-
-  printf("\x1b[%d;%dH%d", current_row + 3, 1, blocks);
-  int col_max = W.screencols - 3;
-  int col_min = 4;
-  for (int i = col_min; i < col_max; i++){
-    printf("\x1b[%d;%dH─",current_row + 1, i);
-    printf("\x1b[%d;%dH─",current_row + 12, i);
-  }
-  for (int i = 0; i <= max_blocks; i++) { 
-    if (i == 0){
-      printf("\x1b[%d;%dH┌",i+current_row+1, col_min);
-      printf("\x1b[%d;%dH┐",i+ current_row + 1, col_max);
-
-    }
-    if (i == max_blocks){
-    printf("\x1b[%d;%dH└",i+ current_row + 2, col_min);
-    printf("\x1b[%d;%dH┘",i+ current_row + 2, col_max);
-    }
-    else {
-
-      printf("\x1b[%d;%dH│",i+ current_row + 2, col_min);
-      printf("\x1b[%d;%dH│",i+ current_row + 2, col_max);
-    }
+  printf("\x1b[%d;%dH%d", current_row + 1, 1, blocks);//prints Temperature next to border
+  for (int i = 0; i < max_blocks; i++) { 
     if (i < block_diff){
-      printf("\x1b[%d;%dH",i + current_row + 1, col);
+      printf("\x1b[%d;%dH",i + current_row, col);
       }
      else{
-
-      printf("\x1b[%d;%dH░",i + current_row + 1, col); 
+      printf("\x1b[%d;%dH░",i + current_row, col); 
     }
   }
 }
 
+/*** refreshes ***/
+pthread_mutex_t cursor_mutex;//prevents threads from intefering on cursor movement
 
-
-
-void drawSpeedometer(size_t count, size_t max) {
-
-  //write(STDOUT_FILENO, "█\r\n", 3);
-  const int bar_width = 50;
-
-  float progress = (float) count / max;
-  int bar_length = progress * bar_width;
-
-  printf("\r|");
-  for (int i = 0; i < bar_length; ++i) {
-      printf("█");
+void* refreshFanSpeeds(){
+  while(1){
+    pthread_mutex_lock(&cursor_mutex);
+    printf("\x1b[3;1H");//move to third row
+    printFanSpeed();
+    printf("\x1b[K");
+    fflush(stdout);
+    pthread_mutex_unlock(&cursor_mutex);
+    usleep(600000);
   }
-  for (int i = bar_length; i < bar_width; ++i) {
-      printf(" ");
-  }
-  printf("| %.2f%%", progress * 100);
+  return NULL;
+}
 
-  fflush(stdout);
-  }
-  
-void* refreshScreen(){//needed to modify to work with pthread i.e. void* 
+void* refreshPlots(){//needed to modify to work with pthread i.e. void* 
   int cols = W.screencols;
-  int rows = W.screenrows; 
-  int control_len = strlen(CONTROL_MESSAGE);
   int col_count_min = 5;
   int padding = col_count_min - 1;
   int col_count_cpu = col_count_min;
   int col_count_gpu = col_count_min;
   char gpu_temp[4];
+  int cpu_plot_row = 10;
+  int gpu_plot_row = 22;
+  int plot_max_lines = 10;
   while (1) {
-    //print control message
-    printf("\x1b[1J");
-    printf("\x1b[1;%dH", (cols - control_len)/2); 
-    printf(CONTROL_MESSAGE);
-    //print fan speed
-    printf("\x1b[3;1H");//move to third row
-    //printf("\x1b[1;32m"); <-- makes everything green!
-    printFanSpeed();
-    printf("\x1b[%d;1H", rows);
-    //print temp/util graph
-    //printf("\x1b[9;%dH", col_count);
-    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, 9); 
+
+    pthread_mutex_lock(&cursor_mutex);
+    //CPU
+    drawPlotBorders(cpu_plot_row, plot_max_lines);
+    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, cpu_plot_row, plot_max_lines); 
     if (col_count_cpu < cols - padding) {
       col_count_cpu++;
     } else {
       col_count_cpu = col_count_min;
-      printf("\x1b[10;%dH", col_count_cpu);
+      printf("\x1b[%d;%dH",cpu_plot_row, col_count_cpu);
       for (int i = 0; i < 10; i++){
         printf("\x1b[B\x1b[K");
       } 
     }
 
+    //GPU
     getGpuTemp(gpu_temp);
-    drawTempPlot(atof(gpu_temp), col_count_gpu, rows - 22); 
+    drawPlotBorders(gpu_plot_row, plot_max_lines);
+    drawTempPlot(atof(gpu_temp), col_count_gpu, gpu_plot_row, plot_max_lines); 
     if (col_count_gpu < cols - padding) {
       col_count_gpu++;
     } else {
       col_count_gpu = col_count_min;
-      printf("\x1b[%d;%dH", rows - 21, col_count_gpu);
+      printf("\x1b[%d;%dH",gpu_plot_row, col_count_gpu);
       for (int i = 0; i < 10; i++){
         printf("\x1b[B\x1b[K");
       } 
     }
-    printf("\x1b[H");
+
     fflush(stdout);
-    usleep(1000000);
+    pthread_mutex_unlock(&cursor_mutex);
+    usleep(600000);
 }
   return NULL;
 }
-
 
 
 /*** init ***/
@@ -410,14 +406,22 @@ void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
 }
 int main() {
+
   enableRawMode();
   initWindow();
-  pthread_t key_thread, print_thread;
-  //this creates two threads for reading keys and printing to terminal
+  printHeader();
+
+  pthread_t key_thread, fan_speed_thread, plot_thread;
+  pthread_mutex_init(&cursor_mutex, NULL);
+
   pthread_create(&key_thread, NULL, processKeypress, NULL);
-  pthread_create(&print_thread, NULL, refreshScreen, NULL);
-  //wait for the threads to finish
+  pthread_create(&plot_thread, NULL, refreshPlots, NULL);
+  pthread_create(&fan_speed_thread, NULL, refreshFanSpeeds, NULL);
+
   pthread_join(key_thread, NULL);
-  pthread_join(print_thread, NULL);
+  pthread_join(plot_thread, NULL);
+  pthread_join(fan_speed_thread, NULL);
+  pthread_mutex_destroy(&cursor_mutex);
+
  return 0;
 }
