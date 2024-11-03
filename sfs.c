@@ -316,7 +316,7 @@ void drawPlotBorders(int current_row, int max_lines){
     printf("\x1b[%d;%dH│",i + current_row, col_min);
     printf("\x1b[%d;%dH│",i + current_row, col_max);
   }
-
+//
 }
 void drawTempPlot(float Temp, int col, int current_row, int max_blocks) {
   int blocks = (int)Temp;
