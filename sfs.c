@@ -20,6 +20,7 @@
 #define SFS_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT\n"
+#define COOL_DOWN 2
 
 //colors for cli output
 #define WHITE "\033[0;39m"
@@ -28,6 +29,15 @@
 #define YELLOW "\033[33m"
 #define BLUE "\033[0;36m"
 #define ORANGE "\033[0;33m"
+//blocks
+#define B1 "\u2581" // ▁
+#define B2 "\u2582" // ▂
+#define B3 "\u2583" // ▃
+#define B4 "\u2584" // ▄
+#define B5 "\u2585" // ▅
+#define B6 "\u2586" // ▆
+#define B7 "\u2587" // ▇
+#define FULL "\u2588" // █
 
 enum nbfcStatusKeys {
   IS_READ_ONLY = 0,
@@ -140,6 +150,7 @@ void* processKeypress(){
         break;
     }
   }
+  usleep(1000000);
  return NULL;
 }
 
@@ -245,9 +256,17 @@ void getGpuTemp(char* temp){
   pclose(fp);
 }
 
-void getGpuUtil(char* util){
+void getUtil(int device, char* util){//CPU: 0, GPU: 1
   char buffer[4];
-  FILE* fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+  FILE* fp;
+  switch (device) {
+    case 0:
+      fp = popen("top -b -n 1 | awk '/^ *%Cpu/ {for(i=1;i<=NF;i++) if($i ~/id/) {print 100 - $(i-1)}}'", "r");
+      break;
+    case 1:
+      fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+      break;
+  }
   if (fp == NULL){
     perror("popen(). failed");
     return;
@@ -295,12 +314,21 @@ void printFanSpeed() {
   
   pclose(fp);
 }
-
+/*
 //U+2591 	░ 	Light shade 
 //U+2592 	▒ 	Medium shade
 //U+2593 	▓ 	Dark shade 
 //braille ⠿ 
-void drawPlotBorders(int current_row, int max_lines){
+U+2581 	▁ 	Lower one eighth block
+U+2582 	▂ 	Lower one quarter block
+U+2583 	▃ 	Lower three eighths block
+U+2584 	▄ 	Lower half block
+U+2585 	▅ 	Lower five eighths block
+U+2586 	▆ 	Lower three quarters block
+U+2587 	▇ 	Lower seven eighths block
+U+2588 	█ 	Full block 
+*/
+void drawGraphBorders(int current_row, int max_lines){
   int col_max = W.screencols - 3;
   int col_min = 4;
   printf("\x1b[%d;%dH┌",current_row, col_min);
@@ -318,24 +346,69 @@ void drawPlotBorders(int current_row, int max_lines){
   }
 //
 }
-void drawTempPlot(float Temp, int col, int current_row, int max_blocks) {
-  int blocks = (int)Temp;
-  if (blocks < 10){
-    blocks = 10;
-  }
-  int max_block_height = ((int)(blocks/10))*10 + 10;
-  int block_diff = max_block_height - blocks;
 
-  printf("\x1b[%d;%dH%d", current_row + 1, 1, blocks);//prints Temperature next to border
-  for (int i = 0; i < max_blocks; i++) { 
-    if (i < block_diff){
+
+
+
+
+
+void drawDataGraph(float fvalue, int col, int current_row, int max_lines) {
+  int value = (int)fvalue;
+
+  int max_value = 100;//temp or util, 100 works as max. thank you celsius!
+  //divide by 1.25 to get 80. i only have 8 block chars.
+  int value_diff = max_value - value;
+  int value_last_digit = value - ((int)value/10)*10;
+
+  printf("\x1b[%d;%dH%d", current_row + 1, 1, value);//prints Temperature next to border
+  for (int i = 0; i < max_lines; i++) { 
+    if (i < (int)value_diff/10){
       printf("\x1b[%d;%dH",i + current_row, col);
       }
-     else{
-      printf("\x1b[%d;%dH░",i + current_row, col); 
+    else if (i > (int)value_diff/10){
+      printf("\x1b[%d;%dH%s",i + current_row, col, FULL);
+    }
+     else if (i == (int)value_diff/10){
+      switch (value_last_digit) {
+        case 0:
+          printf("\x1b[%d;%dH%s",i + current_row, col, FULL); 
+          break;
+        case 1:
+        case 2:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B1); 
+          break;
+        case 3:
+        case 4:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B2); 
+          break;
+        case 5:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B3); 
+          break;
+        case 6:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B4); 
+          break;
+        case 7:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B5); 
+          break;
+        case 8:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B6); 
+          break;
+        case 9:
+          printf("\x1b[%d;%dH%s",i + current_row, col, B7); 
+          break;
+      }
     }
   }
 }
+void clearGraph(int cols, int rows,int col_min, int current_row){
+    for (int i = col_min; i <= cols; i++){
+      for (int k = current_row + 1; k < current_row + rows; k++){
+      printf("\x1b[%d;%dH ",k, i);
+      fflush(stdout);
+    }
+  }
+}
+
 
 /*** refreshes ***/
 pthread_mutex_t cursor_mutex;//prevents threads from intefering on cursor movement
@@ -348,59 +421,69 @@ void* refreshFanSpeeds(){
     printf("\x1b[K");
     fflush(stdout);
     pthread_mutex_unlock(&cursor_mutex);
-    usleep(600000);
+    sleep(COOL_DOWN);
   }
   return NULL;
 }
 
-void* refreshPlots(){//needed to modify to work with pthread i.e. void* 
+
+void* refreshCpuGraph(){
   int cols = W.screencols;
   int col_count_min = 5;
   int padding = col_count_min - 1;
-  int col_count_cpu = col_count_min;
-  int col_count_gpu = col_count_min;
-  char gpu_temp[4];
-  int cpu_plot_row = 10;
-  int gpu_plot_row = 22;
-  int plot_max_lines = 10;
-  while (1) {
-
+  int col_count = col_count_min;
+  char temp[4];
+  char util[4];
+  int graph_row = 10;
+  int graph_max_lines = 10;
+  while(1){
     pthread_mutex_lock(&cursor_mutex);
-    //CPU
-    drawPlotBorders(cpu_plot_row, plot_max_lines);
-    drawTempPlot(atof(parseNBFCData(TEMP)), col_count_cpu, cpu_plot_row, plot_max_lines); 
-    if (col_count_cpu < cols - padding) {
-      col_count_cpu++;
-    } else {
-      col_count_cpu = col_count_min;
-      printf("\x1b[%d;%dH",cpu_plot_row, col_count_cpu);
-      for (int i = 0; i < 10; i++){
-        printf("\x1b[B\x1b[K");
-      } 
-    }
-
-    //GPU
-    getGpuTemp(gpu_temp);
-    drawPlotBorders(gpu_plot_row, plot_max_lines);
-    drawTempPlot(atof(gpu_temp), col_count_gpu, gpu_plot_row, plot_max_lines); 
-    if (col_count_gpu < cols - padding) {
-      col_count_gpu++;
-    } else {
-      col_count_gpu = col_count_min;
-      printf("\x1b[%d;%dH",gpu_plot_row, col_count_gpu);
-      for (int i = 0; i < 10; i++){
-        printf("\x1b[B\x1b[K");
-      } 
-    }
-
+    drawGraphBorders(graph_row, graph_max_lines);
     fflush(stdout);
+    strcpy(temp, parseNBFCData(TEMP));
+    drawDataGraph(atof(temp), col_count, graph_row, graph_max_lines); 
+    if (col_count < cols - padding) {
+      col_count++;
+    } else {
+      clearGraph(cols - padding, 10 ,col_count_min, graph_row);
+      col_count = col_count_min;
+      printf("\x1b[%d;%dH",graph_row, col_count);
+    }
     pthread_mutex_unlock(&cursor_mutex);
-    usleep(600000);
-}
+    fflush(stdout);
+    sleep(COOL_DOWN);
+  }
   return NULL;
 }
 
-
+void* refreshGpuGraph(){
+  int cols = W.screencols;
+  int col_count_min = 5;
+  int padding = col_count_min - 1;
+  int col_count = col_count_min;
+  char temp[4];
+  char util[4];
+  int graph_row = 22;
+  int graph_max_lines = 10;
+  while(1){
+    pthread_mutex_lock(&cursor_mutex);
+    drawGraphBorders(graph_row, graph_max_lines);
+    fflush(stdout);
+    getGpuTemp(temp);
+    drawDataGraph(atof(temp), col_count, graph_row, graph_max_lines); 
+    if (col_count < cols - padding) {
+      col_count++;
+    } else {
+      clearGraph(cols - padding, 10 ,col_count_min, graph_row);
+      col_count = col_count_min;
+      printf("\x1b[%d;%dH",graph_row, col_count);
+    }
+    pthread_mutex_unlock(&cursor_mutex);
+    fflush(stdout);
+    sleep(COOL_DOWN);
+  }
+  return NULL;
+}
 /*** init ***/
 void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
@@ -411,16 +494,18 @@ int main() {
   initWindow();
   printHeader();
 
-  pthread_t key_thread, fan_speed_thread, plot_thread;
+  pthread_t key_thread, fan_speed_thread, cpu_graph_thread, gpu_graph_thread;
   pthread_mutex_init(&cursor_mutex, NULL);
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
-  pthread_create(&plot_thread, NULL, refreshPlots, NULL);
+  pthread_create(&cpu_graph_thread, NULL, refreshCpuGraph, NULL);
+  pthread_create(&gpu_graph_thread, NULL, refreshGpuGraph, NULL);
   pthread_create(&fan_speed_thread, NULL, refreshFanSpeeds, NULL);
 
   pthread_join(key_thread, NULL);
-  pthread_join(plot_thread, NULL);
   pthread_join(fan_speed_thread, NULL);
+  pthread_join(cpu_graph_thread, NULL);
+  pthread_join(gpu_graph_thread, NULL);
   pthread_mutex_destroy(&cursor_mutex);
 
  return 0;
