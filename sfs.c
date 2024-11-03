@@ -455,7 +455,6 @@ void* refreshCpuGraph(){
   }
   return NULL;
 }
-
 void* refreshGpuGraph(){
   int cols = W.screencols;
   int col_count_min = 5;
