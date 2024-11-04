@@ -12,6 +12,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
+#include <wchar.h>
+#include <locale.h>
 
 /*** dependancies ***/
 #define DEPENDANCIES "nbfc-linux, gnuplot" 
@@ -19,17 +21,30 @@
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT\n"
+#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
 #define COOL_DOWN 2
 
 //colors for cli output
 #define WHITE "\033[0;39m"
+#define WHITE_BG "\033[47m"
 #define RED "\033[31m"
+#define RED_BG "\033[41m"
 #define GREEN "\033[32m"
 #define YELLOW "\033[33m"
 #define BLUE "\033[0;36m"
 #define ORANGE "\033[0;33m"
+#define ORANGE_BG "\033[43m"
+#define RESET_BG "\033[0m"
 //blocks
+
+wchar_t* A1 = L"\u2594"; // ▔
+wchar_t* A2 = L"\U0001FB82"; // 🮂
+wchar_t* A3 = L"\U0001FB83"; // 🮃
+wchar_t* A4 = L"\u2580"; // ▀
+wchar_t* A5 = L"\U0001FB84"; // 🮄
+wchar_t* A6 = L"\U0001FB85"; // 🮅
+wchar_t* A7 = L"\U0001FB86"; // 🮆
+
 #define B1 "\u2581" // ▁
 #define B2 "\u2582" // ▂
 #define B3 "\u2583" // ▃
@@ -59,6 +74,8 @@ enum nbfcStatusKeys {
   GPU_FAN_SPEED_STEPS
 };
 
+/*** globals ***/
+int is_service_running = 0;
 /*** structs ***/
 struct windowConfig {
   int screenrows;
@@ -123,6 +140,17 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+int restartNBFC(){
+  system("pkexec /bin/nbfc stop");
+  is_service_running = 1;
+  system("pkexec /bin/nbfc start");
+  is_service_running = 0;
+  printf("NBFC RESTARTED");
+  char command[64];
+  snprintf(command, sizeof(command), "exec %s", "./sfs.o");
+  system(command);
+  return 0;
+}
 
 /*** input ***/
 void* processKeypress(){
@@ -143,29 +171,28 @@ void* processKeypress(){
         };
         break;
       case CTRL_KEY('r'):
-        if (system("/bin/nbfc restart") != 0){//solves some bug that prevents restart
-            system("/bin/nbfc stop");
-            system("/bin/nbfc start");
+        if (restartNBFC() != 0){//solves some bug that prevents restart
         };
         break;
     }
   }
-  usleep(1000000);
  return NULL;
 }
 
 /*** data ***/
 char* getNBFCData() {
+  
+
   FILE* fpipe;
-  char* command = "/bin/nbfc status";
+  char* command = "/bin/nbfc status";//this can cause fatal Error if nbfc is offline
   char buffer[64];
   char* output = NULL;
   size_t total_size = 0;
   //open pipe
   if (NULL == (fpipe = popen(command, "r"))){
     perror("popen(). failed.");
-    exit(EXIT_FAILURE);
   }
+
   //read command output
   while (fgets(buffer, sizeof(buffer), fpipe) != NULL) {
     size_t len = strlen(buffer);
@@ -202,6 +229,11 @@ char* getLastToken (char* str, const char *delim) {
   return last_token; //return last token found
 }
 char* parseNBFCData(int key) {
+  while(is_service_running == 1){
+    sleep(100);
+    printf("timed out");
+    break;
+  }
   const char* raw_data = getNBFCData();
   char* lines[17];
   char line[64];
@@ -296,18 +328,17 @@ void printHeader(){
 
 void printFanSpeed() {
   double fan_speeds[2] = {0};
-  int space_len = 10;
+  int space_len = 8;
   getFanSpeeds(fan_speeds);
   char command[256];
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f small -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
-
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f slant -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
       return;
   }
 
-  char buffer[512];
+  char buffer[256];
   while (fgets(buffer, sizeof(buffer), fp) != NULL) {
       printf("%s", buffer);
     }
@@ -347,29 +378,8 @@ void drawGraphBorders(int current_row, int max_lines){
 //
 }
 
-
-
-
-
-
-void drawDataGraph(float fvalue, int col, int current_row, int max_lines) {
-  int value = (int)fvalue;
-
-  int max_value = 100;//temp or util, 100 works as max. thank you celsius!
-  //divide by 1.25 to get 80. i only have 8 block chars.
-  int value_diff = max_value - value;
-  int value_last_digit = value - ((int)value/10)*10;
-
-  printf("\x1b[%d;%dH%d", current_row + 1, 1, value);//prints Temperature next to border
-  for (int i = 0; i < max_lines; i++) { 
-    if (i < (int)value_diff/10){
-      printf("\x1b[%d;%dH",i + current_row, col);
-      }
-    else if (i > (int)value_diff/10){
-      printf("\x1b[%d;%dH%s",i + current_row, col, FULL);
-    }
-     else if (i == (int)value_diff/10){
-      switch (value_last_digit) {
+void printValueBlock(int i, int last_digit, int current_row, int col){
+      switch (last_digit) {
         case 0:
           printf("\x1b[%d;%dH%s",i + current_row, col, FULL); 
           break;
@@ -395,9 +405,66 @@ void drawDataGraph(float fvalue, int col, int current_row, int max_lines) {
           break;
         case 9:
           printf("\x1b[%d;%dH%s",i + current_row, col, B7); 
-          break;
+          break; 
+      }
+}
+void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_lines) {
+
+  int max_value = 100;//temp or util, 100 works as max. thank you celsius!
+  int temp = ((int)ftemp > 100) ? 100: (int)ftemp;
+  int util = ((int)futil > 100) ? 100: (int)futil;
+  
+  int temp_diff = max_value - temp;
+  int temp_last_digit = temp - ((int)temp/10)*10;
+  int util_diff = max_value - util;
+  int util_last_digit = util - ((int)util/10)*10;
+  
+  int smaller_diff;
+  int bigger_diff;
+
+  if (temp_diff < util_diff){
+    smaller_diff = temp_diff;
+    bigger_diff = util_diff;
+  } else {
+    smaller_diff = util_diff;
+    bigger_diff = temp_diff;
+  }
+
+  for (int i = 0; i < max_lines; i++) { 
+    if (i < (int)smaller_diff/10){
+      printf("\x1b[%d;%dH",i + current_row, col);
+      }
+
+    else if (i == (int)smaller_diff/10){
+      if (smaller_diff == temp_diff){
+        printf("%s", RED);
+        printValueBlock(i, temp_last_digit, current_row, col);
+      } else {
+        printf("%s", ORANGE);
+        printValueBlock(i, util_last_digit, current_row, col);
       }
     }
+    else if (i == (int)bigger_diff/10){
+      if (bigger_diff == temp_diff){
+        printf("%s", RED);
+        printValueBlock(i, temp_last_digit, current_row, col);
+      } else {
+        printf("%s", ORANGE);
+        printValueBlock(i, util_last_digit, current_row, col);
+      }
+    }
+    else  {
+      printf("\x1b[%d;%dH%s", i + current_row, col, FULL);
+
+    }
+  }
+  printf("%s", WHITE);
+}
+void printCurrentValue(int is_temp, int value, int row){
+  if (is_temp){
+    printf("\x1b[%d;%dH%d", row + 1, 1, value);//prints Temperature next to border
+  } else {
+    printf("\x1b[%d;%dH%d%%", row + + 2, 1, value);//prints Temperature next to border
   }
 }
 void clearGraph(int cols, int rows,int col_min, int current_row){
@@ -416,7 +483,7 @@ pthread_mutex_t cursor_mutex;//prevents threads from intefering on cursor moveme
 void* refreshFanSpeeds(){
   while(1){
     pthread_mutex_lock(&cursor_mutex);
-    printf("\x1b[3;1H");//move to third row
+    printf("\x1b[2;1H");//move to third row
     printFanSpeed();
     printf("\x1b[K");
     fflush(stdout);
@@ -426,6 +493,7 @@ void* refreshFanSpeeds(){
   return NULL;
 }
 
+//a generic refreshGraph function introduced weird errors
 
 void* refreshCpuGraph(){
   int cols = W.screencols;
@@ -434,14 +502,17 @@ void* refreshCpuGraph(){
   int col_count = col_count_min;
   char temp[4];
   char util[4];
-  int graph_row = 10;
+  int graph_row = 9;
   int graph_max_lines = 10;
   while(1){
     pthread_mutex_lock(&cursor_mutex);
     drawGraphBorders(graph_row, graph_max_lines);
     fflush(stdout);
     strcpy(temp, parseNBFCData(TEMP));
-    drawDataGraph(atof(temp), col_count, graph_row, graph_max_lines); 
+    getUtil(0, util);
+    drawDataGraph(atof(temp),atof(util), col_count, graph_row, graph_max_lines); 
+    printCurrentValue(1, atof(temp), graph_row); 
+    printCurrentValue(0, atof(util), graph_row); 
     if (col_count < cols - padding) {
       col_count++;
     } else {
@@ -462,14 +533,17 @@ void* refreshGpuGraph(){
   int col_count = col_count_min;
   char temp[4];
   char util[4];
-  int graph_row = 22;
+  int graph_row = 20;
   int graph_max_lines = 10;
   while(1){
     pthread_mutex_lock(&cursor_mutex);
     drawGraphBorders(graph_row, graph_max_lines);
     fflush(stdout);
     getGpuTemp(temp);
-    drawDataGraph(atof(temp), col_count, graph_row, graph_max_lines); 
+    getUtil(1, util);
+    drawDataGraph(atof(temp), atof(util), col_count, graph_row, graph_max_lines); 
+    printCurrentValue(1, atof(temp), graph_row); 
+    printCurrentValue(0, atof(util), graph_row); 
     if (col_count < cols - padding) {
       col_count++;
     } else {
@@ -488,7 +562,7 @@ void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
 }
 int main() {
-
+  setlocale(LC_ALL, "C.UTF-8"); 
   enableRawMode();
   initWindow();
   printHeader();
@@ -497,8 +571,8 @@ int main() {
   pthread_mutex_init(&cursor_mutex, NULL);
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
-  pthread_create(&cpu_graph_thread, NULL, refreshCpuGraph, NULL);
   pthread_create(&gpu_graph_thread, NULL, refreshGpuGraph, NULL);
+  pthread_create(&cpu_graph_thread, NULL, refreshCpuGraph, NULL);
   pthread_create(&fan_speed_thread, NULL, refreshFanSpeeds, NULL);
 
   pthread_join(key_thread, NULL);
