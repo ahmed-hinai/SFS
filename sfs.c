@@ -22,18 +22,20 @@
 #define SFS_VERSION "0.0.1"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
-#define COOL_DOWN 2
+#define COOL_DOWN 4
 
 //colors for cli output
 #define WHITE "\033[0;39m"
 #define WHITE_BG "\033[47m"
 #define RED "\033[31m"
 #define RED_BG "\033[41m"
+#define RED_ON_YELLOW "\033[31;43m"
 #define GREEN "\033[32m"
 #define YELLOW "\033[33m"
 #define BLUE "\033[0;36m"
 #define ORANGE "\033[0;33m"
 #define ORANGE_BG "\033[43m"
+#define YELLOW_ON_RED "\033[33;41m"
 #define RESET_BG "\033[0m"
 //blocks
 
@@ -446,10 +448,10 @@ void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_l
     }
     else if (i == (int)bigger_diff/10){
       if (bigger_diff == temp_diff){
-        printf("%s", RED);
+        printf("%s", RED_ON_YELLOW); 
         printValueBlock(i, temp_last_digit, current_row, col);
       } else {
-        printf("%s", ORANGE);
+        printf("%s", YELLOW_ON_RED);
         printValueBlock(i, util_last_digit, current_row, col);
       }
     }
@@ -458,13 +460,19 @@ void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_l
 
     }
   }
-  printf("%s", WHITE);
+  printf("%s", RESET_BG);
 }
 void printCurrentValue(int is_temp, int value, int row){
   if (is_temp){
-    printf("\x1b[%d;%dH%d", row + 1, 1, value);//prints Temperature next to border
+    printf("\x1b[%d;%dH   ", row + 1, 1);
+    printf(RED);
+    printf("\x1b[%d;%dH%d", row + 1, 1, value);
+    printf(WHITE);
   } else {
-    printf("\x1b[%d;%dH%d%%", row + + 2, 1, value);//prints Temperature next to border
+    printf("\x1b[%d;%dH   ", row + 2, 1);
+    printf(ORANGE);
+    printf("\x1b[%d;%dH%d", row + 2, 1, value);
+    printf(WHITE);
   }
 }
 void clearGraph(int cols, int rows,int col_min, int current_row){
@@ -562,7 +570,6 @@ void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
 }
 int main() {
-  setlocale(LC_ALL, "C.UTF-8"); 
   enableRawMode();
   initWindow();
   printHeader();
