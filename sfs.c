@@ -12,6 +12,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdarg.h>
 
 /*** dependancies ***/
 #define DEPENDANCIES "nbfc-linux" 
@@ -20,7 +21,7 @@
 #define SFS_VERSION "0.0.1"
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 4
+#define COOL_DOWN 1 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -337,48 +338,73 @@ void drawGraphBorders(int current_row, int max_lines){
   }
 //
 }
+char* graph_buffer = NULL;
+size_t graph_buffer_size = 0;
+
+void appendToGraphBuf(const char* format, ...) {
+    
+  va_list args;
+  va_start(args, format);
+
+  char temp_buffer[1024];
+  int length = vsnprintf(temp_buffer, sizeof(temp_buffer), format, args);
+  
+  if (length < 0) {
+    printf("Error formatting string\n");
+    va_end(args);
+    return;
+  }
+
+  graph_buffer = realloc(graph_buffer, graph_buffer_size + length + 1);
+  if (graph_buffer == NULL){
+    printf("realloc(). failed");
+    exit(1);
+  }
+  strcpy(graph_buffer + graph_buffer_size, temp_buffer);
+  graph_buffer_size += length;
+
+  va_end(args);
+}
+
 
 void printValueBlock(int i, int last_digit, int current_row, int col){
       switch (last_digit) {
         case 0:
-          printf("\x1b[%d;%dH%s",i + current_row, col, FULL); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, FULL); 
           break;
         case 1:
         case 2:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B1); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B1); 
           break;
         case 3:
         case 4:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B2); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B2); 
           break;
         case 5:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B3); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B3); 
           break;
         case 6:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B4); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B4); 
           break;
         case 7:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B5); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B5); 
           break;
         case 8:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B6); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B6); 
           break;
         case 9:
-          printf("\x1b[%d;%dH%s",i + current_row, col, B7); 
+          appendToGraphBuf("\x1b[%d;%dH%s",i + current_row, col, B7); 
           break; 
       }
 }
 void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_lines) {
-
   int max_value = 100;//temp or util, 100 works as max. thank you celsius!
   int temp = ((int)ftemp > 100) ? 100: (int)ftemp;
   int util = ((int)futil > 100) ? 100: (int)futil;
-  
   int temp_diff = max_value - temp;
   int temp_last_digit = temp - ((int)temp/10)*10;
   int util_diff = max_value - util;
   int util_last_digit = util - ((int)util/10)*10;
-  
   int smaller_diff;
   int bigger_diff;
 
@@ -389,36 +415,34 @@ void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_l
     smaller_diff = util_diff;
     bigger_diff = temp_diff;
   }
-
   for (int i = 0; i < max_lines; i++) { 
     if (i < (int)smaller_diff/10){
-      printf("\x1b[%d;%dH",i + current_row, col);
+      appendToGraphBuf("\x1b[%d;%dH",i + current_row, col);
       }
-
     else if (i == (int)smaller_diff/10){
       if (smaller_diff == temp_diff){
-        printf("%s", RED);
+        appendToGraphBuf("%s", RED);
         printValueBlock(i, temp_last_digit, current_row, col);
       } else {
-        printf("%s", ORANGE);
+        appendToGraphBuf("%s", ORANGE);
         printValueBlock(i, util_last_digit, current_row, col);
       }
     }
     else if (i == (int)bigger_diff/10){
       if (bigger_diff == temp_diff){
-        printf("%s", RED_ON_YELLOW); 
+        appendToGraphBuf("%s", RED_ON_YELLOW); 
         printValueBlock(i, temp_last_digit, current_row, col);
       } else {
-        printf("%s", YELLOW_ON_RED);
+        appendToGraphBuf("%s", YELLOW_ON_RED);
         printValueBlock(i, util_last_digit, current_row, col);
       }
     }
     else  {
-      printf("\x1b[%d;%dH%s", i + current_row, col, FULL);
+      appendToGraphBuf("\x1b[%d;%dH%s", i + current_row, col, FULL);
 
     }
   }
-  printf("%s", RESET_BG);
+  appendToGraphBuf("%s", RESET_BG);
 }
 void printCurrentValue(int is_temp, int value, int row){
   if (is_temp){
@@ -521,26 +545,28 @@ void refreshGraph(int col_count, int device, int graph_row, int graph_max_lines)
     printCurrentValue(0, cpu_util, graph_row); 
   }
 
+  printf("%s", graph_buffer);
   fflush(stdout);
 }
 
 void* refreshScreen(){
   int cols = W.screencols;
-  int col_count = 4;
+  int col_count_min = 5;
   int padding = 4;
+  int col_count = cols - padding + 1;
   int graph_max_lines = 10;
   while(1){
     pthread_mutex_lock(&mutex);
     refreshFanSpeeds();
     refreshGraph(col_count, CPU, 9, graph_max_lines);
     refreshGraph(col_count, GPU, 20, graph_max_lines);
-    if (col_count < cols - padding){
-      col_count++;
+    if (col_count > col_count_min){
+      col_count--;
     }
     else {
-      col_count = 4;
-      clearGraph(cols - padding, 10, 5, 9);
-      clearGraph(cols - padding, 10, 5, 20);
+      col_count = cols - padding;
+      //clearGraph(cols - padding, 10, col_count, 9);
+      //clearGraph(cols - padding, 10, col_count, 20);
     }
     pthread_mutex_unlock(&mutex);
     sleep(COOL_DOWN);
@@ -557,6 +583,12 @@ int main() {
   initWindow();
   printHeader();
 
+  graph_buffer = malloc(1);
+  if (graph_buffer == NULL){
+    printf("malloc(). failed");
+    return 1;
+  }
+  graph_buffer[0] = '\0';
   pthread_t key_thread, data_prep_thread, print_thread; 
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
