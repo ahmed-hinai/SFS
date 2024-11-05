@@ -1,3 +1,21 @@
-CC = gcc  # or whatever compiler you are using
-sfs: sfs.c 
-			$(CC) sfs.c -o sfs.o -Wall -Wextra -pedantic -lpthread 
+CC = gcc
+CFLAGS = -Wall -Wextra -pedantic -lpthread
+OBJ = sfs.o  
+TARGET = sfs
+INSTALL_DIR = /usr/local/bin
+
+all: $(TARGET)
+
+$(TARGET): $(OBJ)
+	$(CC) $(OBJ) -o $(TARGET)
+
+sfs.o: sfs.c
+	$(CC) -c sfs.c $(CFLAGS)
+
+install: $(TARGET)
+	install -m 755 $(TARGET) $(INSTALL_DIR)
+
+clean:
+	rm -f $(OBJ) $(TARGET)
+
+

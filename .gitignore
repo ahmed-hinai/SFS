@@ -1,1 +1,5 @@
+#ignore ojbect
 *.o
+#ignore binray in case i forgot to make clean
+sfs
+

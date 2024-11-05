@@ -12,16 +12,14 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
-#include <wchar.h>
-#include <locale.h>
 
 /*** dependancies ***/
-#define DEPENDANCIES "nbfc-linux, gnuplot" 
+#define DEPENDANCIES "nbfc-linux" 
 
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
-#define CTRL_KEY(k) ((k) & 0x1f)
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
+#define CTRL_KEY(k) ((k) & 0x1f)
 #define COOL_DOWN 4
 #define CPU 0
 #define GPU 1
@@ -39,15 +37,6 @@
 #define YELLOW_ON_RED "\033[33;41m"
 #define RESET_BG "\033[0m"
 //blocks
-
-wchar_t* A1 = L"\u2594"; // ▔
-wchar_t* A2 = L"\U0001FB82"; // 🮂
-wchar_t* A3 = L"\U0001FB83"; // 🮃
-wchar_t* A4 = L"\u2580"; // ▀
-wchar_t* A5 = L"\U0001FB84"; // 🮄
-wchar_t* A6 = L"\U0001FB85"; // 🮅
-wchar_t* A7 = L"\U0001FB86"; // 🮆
-
 #define B1 "\u2581" // ▁
 #define B2 "\u2582" // ▂
 #define B3 "\u2583" // ▃
@@ -168,12 +157,10 @@ char* getNBFCData() {
   char buffer[64];
   char* output = NULL;
   size_t total_size = 0;
-  //open pipe
   if (NULL == (fpipe = popen(command, "r"))){
     perror("popen(). failed.");
   }
 
-  //read command output
   while (fgets(buffer, sizeof(buffer), fpipe) != NULL) {
     size_t len = strlen(buffer);
     //resize output buffer to fit new data
@@ -268,7 +255,7 @@ void getGpuTemp(char* temp){
   pclose(fp);
 }
 
-void getUtil(int device, char* util){//CPU: 0, GPU: 1
+void getUtil(int device, char* util){
   char buffer[4];
   FILE* fp;
   switch (device) {
@@ -331,20 +318,7 @@ void printFanSpeed() {
   
   pclose(fp);
 }
-/*
-//U+2591 	░ 	Light shade 
-//U+2592 	▒ 	Medium shade
-//U+2593 	▓ 	Dark shade 
-//braille ⠿ 
-U+2581 	▁ 	Lower one eighth block
-U+2582 	▂ 	Lower one quarter block
-U+2583 	▃ 	Lower three eighths block
-U+2584 	▄ 	Lower half block
-U+2585 	▅ 	Lower five eighths block
-U+2586 	▆ 	Lower three quarters block
-U+2587 	▇ 	Lower seven eighths block
-U+2588 	█ 	Full block 
-*/
+
 void drawGraphBorders(int current_row, int max_lines){
   int col_max = W.screencols - 3;
   int col_min = 4;
