@@ -23,7 +23,8 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
 #define COOL_DOWN 4
-
+#define CPU 0
+#define GPU 1
 //colors for cli output
 #define WHITE "\033[0;39m"
 #define WHITE_BG "\033[47m"
@@ -120,14 +121,7 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 
 }
-char readKey() {
-  int nread;
-  char c;
-  while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
-    if (nread == -1 && errno != EAGAIN) die("read");
-  }
-  return c;
-}
+
 
 int getWindowSize(int *rows, int *cols) {
   struct winsize ws;
@@ -155,31 +149,15 @@ int restartNBFC(){
 }
 
 /*** input ***/
-void* processKeypress(){
+char readKey() {
+  int nread;
   char c;
-  while((c = readKey()) != EOF) {
-    switch (c) {
-      case CTRL_KEY('q'):
-        printf("\x1b[2J");
-        printf("\x1b[H");
-        exit(0);
-        break;
-      case CTRL_KEY('b'):
-        if(system("/bin/nbfc set -s 100") != 0) {
-        };
-        break;
-      case CTRL_KEY('a'):
-        if(system("/bin/nbfc set -a") != 0) {
-        };
-        break;
-      case CTRL_KEY('r'):
-        if (restartNBFC() != 0){//solves some bug that prevents restart
-        };
-        break;
-    }
+  while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+    if (nread == -1 && errno != EAGAIN) die("read");
   }
- return NULL;
+  return c;
 }
+
 
 /*** data ***/
 char* getNBFCData() {
@@ -333,7 +311,13 @@ void printFanSpeed() {
   int space_len = 8;
   getFanSpeeds(fan_speeds);
   char command[256];
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f slant -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1]);
+  char* font;
+  if (W.screenrows > 26){
+    font = "slant";
+  } else {
+    font = "smslant";
+  }
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
@@ -475,7 +459,7 @@ void printCurrentValue(int is_temp, int value, int row){
     printf(WHITE);
   }
 }
-void clearGraph(int cols, int rows,int col_min, int current_row){
+void clearGraph(int cols, int rows, int col_min, int current_row){
     for (int i = col_min; i <= cols; i++){
       for (int k = current_row + 1; k < current_row + rows; k++){
       printf("\x1b[%d;%dH ",k, i);
@@ -486,83 +470,108 @@ void clearGraph(int cols, int rows,int col_min, int current_row){
 
 
 /*** refreshes ***/
-pthread_mutex_t cursor_mutex;//prevents threads from intefering on cursor movement
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//prevents threads from intefering on cursor movement
 
-void* refreshFanSpeeds(){
-  while(1){
-    pthread_mutex_lock(&cursor_mutex);
+void* processKeypress(){
+  char c;
+  while((c = readKey()) != EOF) {
+    pthread_mutex_lock(&mutex);
+    switch (c) {
+      case CTRL_KEY('q'):
+        printf("\x1b[2J");
+        printf("\x1b[H");
+        exit(0);
+        break;
+      case CTRL_KEY('b'):
+        if(system("/bin/nbfc set -s 100") != 0) {
+        };
+        break;
+      case CTRL_KEY('a'):
+        if(system("/bin/nbfc set -a") != 0) {
+        };
+        break;
+      case CTRL_KEY('r'):
+        if (restartNBFC() != 0){//solves some bug that prevents restart
+        };
+        break;
+
+    pthread_mutex_unlock(&mutex);
+    }
+  }
+ return NULL;
+}
+
+void refreshFanSpeeds(){
     printf("\x1b[2;1H");//move to third row
     printFanSpeed();
     printf("\x1b[K");
     fflush(stdout);
-    pthread_mutex_unlock(&cursor_mutex);
+}
+
+float cpu_temp;
+float cpu_util;
+float gpu_temp;
+float gpu_util;
+
+void prepareGraphData(){
+  char cpu_temp_buffer[4];
+  char cpu_util_buffer[4];
+  char gpu_temp_buffer[4];
+  char gpu_util_buffer[4];
+  getGpuTemp(gpu_temp_buffer);
+  getUtil(GPU, gpu_util_buffer);
+  strcpy(cpu_temp_buffer, parseNBFCData(TEMP));
+  getUtil(CPU, cpu_util_buffer);
+  cpu_temp = atof(cpu_temp_buffer);
+  cpu_util = atof(cpu_util_buffer);
+  gpu_temp = atof(gpu_temp_buffer);
+  gpu_util = atof(gpu_util_buffer);
+}
+
+void* refreshGraphData(){
+  while(1){
+    prepareGraphData();
     sleep(COOL_DOWN);
   }
   return NULL;
 }
-
-//a generic refreshGraph function introduced weird errors
-
-void* refreshCpuGraph(){
-  int cols = W.screencols;
-  int col_count_min = 5;
-  int padding = col_count_min - 1;
-  int col_count = col_count_min;
-  char temp[4];
-  char util[4];
-  int graph_row = 9;
-  int graph_max_lines = 10;
-  while(1){
-    pthread_mutex_lock(&cursor_mutex);
-    drawGraphBorders(graph_row, graph_max_lines);
-    fflush(stdout);
-    strcpy(temp, parseNBFCData(TEMP));
-    getUtil(0, util);
-    drawDataGraph(atof(temp),atof(util), col_count, graph_row, graph_max_lines); 
-    printCurrentValue(1, atof(temp), graph_row); 
-    printCurrentValue(0, atof(util), graph_row); 
-    if (col_count < cols - padding) {
-      col_count++;
-    } else {
-      clearGraph(cols - padding, 10 ,col_count_min, graph_row);
-      col_count = col_count_min;
-      printf("\x1b[%d;%dH",graph_row, col_count);
-    }
-    pthread_mutex_unlock(&cursor_mutex);
-    fflush(stdout);
-    sleep(COOL_DOWN);
+void refreshGraph(int col_count, int device, int graph_row, int graph_max_lines){
+  drawGraphBorders(graph_row, graph_max_lines);
+  if (device){
+    drawDataGraph(gpu_temp, gpu_util, col_count, graph_row, graph_max_lines); 
+    printCurrentValue(1, gpu_temp, graph_row); 
+    printCurrentValue(0, gpu_util, graph_row); 
+  } else {
+    drawDataGraph(cpu_temp, cpu_util, col_count, graph_row, graph_max_lines); 
+    printCurrentValue(1, cpu_temp, graph_row); 
+    printCurrentValue(0, cpu_util, graph_row); 
   }
-  return NULL;
+
+  fflush(stdout);
 }
-void* refreshGpuGraph(){
+
+void* refreshScreen(){
   int cols = W.screencols;
-  int col_count_min = 5;
-  int padding = col_count_min - 1;
-  int col_count = col_count_min;
-  char temp[4];
-  char util[4];
-  int graph_row = 20;
+  int col_count = 4;
+  int padding = 4;
   int graph_max_lines = 10;
   while(1){
-    pthread_mutex_lock(&cursor_mutex);
-    drawGraphBorders(graph_row, graph_max_lines);
-    fflush(stdout);
-    getGpuTemp(temp);
-    getUtil(1, util);
-    drawDataGraph(atof(temp), atof(util), col_count, graph_row, graph_max_lines); 
-    printCurrentValue(1, atof(temp), graph_row); 
-    printCurrentValue(0, atof(util), graph_row); 
-    if (col_count < cols - padding) {
+    pthread_mutex_lock(&mutex);
+    refreshFanSpeeds();
+    refreshGraph(col_count, CPU, 9, graph_max_lines);
+    refreshGraph(col_count, GPU, 20, graph_max_lines);
+    if (col_count < cols - padding){
       col_count++;
-    } else {
-      clearGraph(cols - padding, 10 ,col_count_min, graph_row);
-      col_count = col_count_min;
-      printf("\x1b[%d;%dH",graph_row, col_count);
     }
-    pthread_mutex_unlock(&cursor_mutex);
-    fflush(stdout);
+    else {
+      col_count = 4;
+      clearGraph(cols - padding, 10, 5, 9);
+      clearGraph(cols - padding, 10, 5, 20);
+    }
+    pthread_mutex_unlock(&mutex);
     sleep(COOL_DOWN);
   }
+
   return NULL;
 }
 /*** init ***/
@@ -574,19 +583,15 @@ int main() {
   initWindow();
   printHeader();
 
-  pthread_t key_thread, fan_speed_thread, cpu_graph_thread, gpu_graph_thread;
-  pthread_mutex_init(&cursor_mutex, NULL);
+  pthread_t key_thread, data_prep_thread, print_thread; 
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
-  pthread_create(&gpu_graph_thread, NULL, refreshGpuGraph, NULL);
-  pthread_create(&cpu_graph_thread, NULL, refreshCpuGraph, NULL);
-  pthread_create(&fan_speed_thread, NULL, refreshFanSpeeds, NULL);
+  pthread_create(&data_prep_thread, NULL, refreshGraphData, NULL);
+  pthread_create(&print_thread, NULL, refreshScreen, NULL);
 
   pthread_join(key_thread, NULL);
-  pthread_join(fan_speed_thread, NULL);
-  pthread_join(cpu_graph_thread, NULL);
-  pthread_join(gpu_graph_thread, NULL);
-  pthread_mutex_destroy(&cursor_mutex);
+  pthread_join(data_prep_thread, NULL);
+  pthread_join(print_thread, NULL);
 
  return 0;
 }
