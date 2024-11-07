@@ -21,7 +21,7 @@
 #define SFS_VERSION "0.0.1"
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 3 
+#define COOL_DOWN 1 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -293,6 +293,59 @@ void getUtil(int device, char* util){
 }
 
 
+
+void decrementColumn(char* str) {
+  for (int i = 0; str[i] != '\0'; i++) {
+    if (str[i] == 'H') {
+      int j = 1;
+      while (i - j >= 0 && str[i-j-1] != ';') {
+          j++;
+      }
+
+      if (i - j < 0 || str[i-j-1] != ';') {
+          continue;
+      }
+      
+      char column_buf[5] = {0};
+      int col_start = i - j;
+      int col_end = i - 1;
+      int k = 0;
+      for (int m = col_end; m >= col_start; m--) {
+          column_buf[k++] = str[m];
+      }
+      // Reverse the extracted column number (to correct it)
+      int len = strlen(column_buf);
+      for (int m = 0; m < len / 2; m++) {
+          char temp = column_buf[m];
+          column_buf[m] = column_buf[len - m - 1];
+          column_buf[len - m - 1] = temp;
+      }
+      char *end_of_column;
+      int column = (int)strtol(column_buf, &end_of_column, 10);
+
+      if (column > 5) {
+        column -= 1;
+        j = 1;
+      }
+      else {
+        column = W.screencols;
+      }
+
+      //printf("%d\n",column);
+      char new_column_buf[5];
+      snprintf(new_column_buf, sizeof(new_column_buf), "%d", column);
+      int new_col_len = strlen(new_column_buf);
+      for (int m = 0; m < new_col_len; m++) {
+          str[col_start + m] = new_column_buf[m];
+      }
+      /*for (int m = new_col_len; m < k; m++) {//in case new column is shorter*/
+      /*    str[col_start + m] = '0';*/
+      /*}*/
+    }
+  }
+}
+
+
 /*** output ***/
 void printHeader(){
   int cols = W.screencols;
@@ -375,21 +428,21 @@ void appendToGraphBuf(const char* format, ...) {
     va_end(args);
     exit(1);
   }
-  if (graph_buffer_size > sizeof(length)){
-    char old_string_buffer[graph_buffer_size + 1];
-    strncpy(old_string_buffer, graph_buffer, graph_buffer_size);
-    old_string_buffer[graph_buffer_size] = '\0';
-    for (int i = 1; old_string_buffer[i] != '\0'; i++){
-      if (old_string_buffer[i] == 'H' && isdigit(old_string_buffer[i-1])) {
-          
-          old_string_buffer[i-1] -= 1 ;
-      }
+  if (graph_buffer_size > 0){
+    char* old_string_buffer = (char*)malloc(graph_buffer_size + 1);
+    if (old_string_buffer == NULL) {
+        printf("Memory allocation failed\n");
+        va_end(args);
+        exit(1);
     }
-
-
-      strcpy(graph_buffer, old_string_buffer);
-      strcpy(graph_buffer + graph_buffer_size, new_string_buffer);
-      graph_buffer_size += length;
+    memcpy(old_string_buffer, graph_buffer, graph_buffer_size);
+    old_string_buffer[graph_buffer_size] = '\0'; 
+    decrementColumn(old_string_buffer);
+    strcpy(graph_buffer, old_string_buffer);
+    free(old_string_buffer); 
+    strcpy(graph_buffer + graph_buffer_size, new_string_buffer);
+    graph_buffer_size += length;
+    printf("%s", graph_buffer);
   } else {
     strcpy(graph_buffer + graph_buffer_size, new_string_buffer);
     graph_buffer_size += length;
@@ -573,7 +626,7 @@ void refreshGraph(int col_count, int device, int graph_row, int graph_max_lines)
     printCurrentValue(0, cpu_util, graph_row); 
   }
 
-  printf("%s", graph_buffer);
+  //printf("%s", graph_buffer);
   fflush(stdout);
 }
 
@@ -586,8 +639,8 @@ void* refreshScreen(){
   while(1){
     pthread_mutex_lock(&mutex);
     refreshFanSpeeds();
-    refreshGraph(cols - padding + 1, CPU, 9, graph_max_lines);
-    refreshGraph(cols - padding + 1, GPU, 20, graph_max_lines);
+    refreshGraph(cols - 5, CPU, 9, graph_max_lines);
+    refreshGraph(cols - 5, GPU, 20, graph_max_lines);
     if (col_count > col_count_min){
       col_count--;
     }
@@ -611,12 +664,7 @@ int main() {
   initWindow();
   printHeader();
 
-  graph_buffer = malloc(1);
-  if (graph_buffer == NULL){
-    printf("malloc(). failed");
-    return 1;
-  }
-  graph_buffer[0] = '\0';
+
   pthread_t key_thread, data_prep_thread, print_thread; 
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
