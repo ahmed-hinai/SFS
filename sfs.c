@@ -197,18 +197,7 @@ char* getLastToken (char* str, const char *delim) {
   return last_token; //return last token found
 }
 
-char* getEarlierToken(char* str, const char* delim) {
-    char* previous_token = NULL;
-    char* current_token = strtok(str, delim);
 
-    while (current_token != NULL) {
-        previous_token = current_token;
-        
-        current_token = strtok(NULL, delim);
-    }
-
-    return previous_token; 
-}
 char* parseNBFCData(int key) {
   while(is_service_running == 1){
     sleep(100);
@@ -294,58 +283,6 @@ void getUtil(int device, char* util){
 
 
 
-void decrementColumn(char* str) {
-  for (int i = 0; str[i] != '\0'; i++) {
-    if (str[i] == 'H') {
-      int j = 1;
-      while (i - j >= 0 && str[i-j-1] != ';') {
-          j++;
-      }
-
-      if (i - j < 0 || str[i-j-1] != ';') {
-          continue;
-      }
-      
-      char column_buf[5] = {0};
-      int col_start = i - j;
-      int col_end = i - 1;
-      int k = 0;
-      for (int m = col_end; m >= col_start; m--) {
-          column_buf[k++] = str[m];
-      }
-      // Reverse the extracted column number (to correct it)
-      int len = strlen(column_buf);
-      for (int m = 0; m < len / 2; m++) {
-          char temp = column_buf[m];
-          column_buf[m] = column_buf[len - m - 1];
-          column_buf[len - m - 1] = temp;
-      }
-      char *end_of_column;
-      int column = (int)strtol(column_buf, &end_of_column, 10);
-
-      if (column > 5) {
-        column -= 1;
-        j = 1;
-      }
-      else {
-        column = W.screencols;
-      }
-
-      //printf("%d\n",column);
-      char new_column_buf[5];
-      snprintf(new_column_buf, sizeof(new_column_buf), "%d", column);
-      int new_col_len = strlen(new_column_buf);
-      for (int m = 0; m < new_col_len; m++) {
-          str[col_start + m] = new_column_buf[m];
-      }
-      /*for (int m = new_col_len; m < k; m++) {//in case new column is shorter*/
-      /*    str[col_start + m] = '0';*/
-      /*}*/
-    }
-  }
-}
-
-
 /*** output ***/
 void printHeader(){
   int cols = W.screencols;
@@ -405,82 +342,37 @@ void drawGraphBorders(int current_row, int max_lines){
 //
 }
 
-char* graph_buffer = NULL;
-size_t graph_buffer_size = 0;
-
-void appendToGraphBuf(const char* format, ...) {
-    
-  va_list args;
-  va_start(args, format);
-
-  char new_string_buffer[256];
-  int length = vsnprintf(new_string_buffer, sizeof(new_string_buffer), format, args);
-  
-  if (length < 0) {
-    printf("Error formatting string\n");
-    va_end(args);
-    return;
-  }
-
-  graph_buffer = realloc(graph_buffer, graph_buffer_size + length + 1);
-  if (graph_buffer == NULL){
-    printf("realloc(). failed");
-    va_end(args);
-    exit(1);
-  }
-  if (graph_buffer_size > 0){
-    char* old_string_buffer = (char*)malloc(graph_buffer_size + 1);
-    if (old_string_buffer == NULL) {
-        printf("Memory allocation failed\n");
-        va_end(args);
-        exit(1);
-    }
-    memcpy(old_string_buffer, graph_buffer, graph_buffer_size);
-    old_string_buffer[graph_buffer_size] = '\0'; 
-    decrementColumn(old_string_buffer);
-    strcpy(graph_buffer, old_string_buffer);
-    free(old_string_buffer); 
-    strcpy(graph_buffer + graph_buffer_size, new_string_buffer);
-    graph_buffer_size += length;
-    printf("%s", graph_buffer);
-  } else {
-    strcpy(graph_buffer + graph_buffer_size, new_string_buffer);
-    graph_buffer_size += length;
-  }
-
-  va_end(args);
-}
-
 
 void printValueBlock(int i, int last_digit, char* colour, int current_row, int col){
       switch (last_digit) {
         case 0:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, FULL); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, FULL); 
           break;
         case 1:
         case 2:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B1); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B1); 
           break;
         case 3:
         case 4:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B2); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B2); 
           break;
         case 5:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B3); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B3); 
           break;
         case 6:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B4); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B4); 
           break;
         case 7:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B5); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B5); 
           break;
         case 8:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B6); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B6); 
           break;
         case 9:
-          appendToGraphBuf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B7); 
+          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B7); 
           break; 
       }
+
 }
 void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_lines) {
   int max_value = 100;//temp or util, 100 works as max. thank you celsius!
@@ -502,7 +394,7 @@ void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_l
   }
   for (int i = 0; i < max_lines; i++) { 
     if (i < (int)smaller_diff/10){
-      appendToGraphBuf("\x1b[%d;%dH",i + current_row, col);
+      printf("\x1b[%d;%dH",i + current_row, col);
       }
     else if (i == (int)smaller_diff/10){
       if (smaller_diff == temp_diff){
@@ -519,11 +411,11 @@ void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_l
       }
     }
     else  {
-      appendToGraphBuf("\x1b[%d;%dH%s", i + current_row, col, FULL);
+      printf("\x1b[%d;%dH%s", i + current_row, col, FULL);
 
     }
   }
-  appendToGraphBuf("%s", RESET_BG);
+  printf("%s", RESET_BG);
 }
 void printCurrentValue(int is_temp, int value, int row){
   if (is_temp){
@@ -586,11 +478,9 @@ void refreshFanSpeeds(){
     printf("\x1b[K");
     fflush(stdout);
 }
-
-float cpu_temp;
-float cpu_util;
-float gpu_temp;
-float gpu_util;
+int data_buffer_size = 0;
+int cpu_data_buffer[1024][2];
+int gpu_data_buffer[1024][2];
 
 void prepareGraphData(){
   char cpu_temp_buffer[4];
@@ -598,15 +488,15 @@ void prepareGraphData(){
   char gpu_temp_buffer[4];
   char gpu_util_buffer[4];
   getGpuTemp(gpu_temp_buffer);
-  getUtil(GPU, gpu_util_buffer);
+  getUtil(GPU,gpu_util_buffer);
   strcpy(cpu_temp_buffer, parseNBFCData(TEMP));
   getUtil(CPU, cpu_util_buffer);
-  cpu_temp = atof(cpu_temp_buffer);
-  cpu_util = atof(cpu_util_buffer);
-  gpu_temp = atof(gpu_temp_buffer);
-  gpu_util = atof(gpu_util_buffer);
+  cpu_data_buffer[data_buffer_size][0] = atof(cpu_temp_buffer);
+  cpu_data_buffer[data_buffer_size][1] = atof(cpu_util_buffer);
+  gpu_data_buffer[data_buffer_size][0] = atof(gpu_temp_buffer);
+  gpu_data_buffer[data_buffer_size][1] = atof(gpu_util_buffer);
+  data_buffer_size++;
 }
-
 void* refreshGraphData(){
   while(1){
     prepareGraphData();
@@ -614,19 +504,12 @@ void* refreshGraphData(){
   }
   return NULL;
 }
-void refreshGraph(int col_count, int device, int graph_row, int graph_max_lines){
+void refreshGraph(int col_count, int temp, int util, int graph_row, int graph_max_lines){
   drawGraphBorders(graph_row, graph_max_lines);
-  if (device){
-    drawDataGraph(gpu_temp, gpu_util, col_count, graph_row, graph_max_lines); 
-    printCurrentValue(1, gpu_temp, graph_row); 
-    printCurrentValue(0, gpu_util, graph_row); 
-  } else {
-    drawDataGraph(cpu_temp, cpu_util, col_count, graph_row, graph_max_lines); 
-    printCurrentValue(1, cpu_temp, graph_row); 
-    printCurrentValue(0, cpu_util, graph_row); 
-  }
+  drawDataGraph(temp, util, col_count, graph_row, graph_max_lines); 
+  printCurrentValue(1, temp, graph_row); 
+  printCurrentValue(0, util, graph_row); 
 
-  //printf("%s", graph_buffer);
   fflush(stdout);
 }
 
@@ -639,22 +522,22 @@ void* refreshScreen(){
   while(1){
     pthread_mutex_lock(&mutex);
     refreshFanSpeeds();
-    refreshGraph(cols - 5, CPU, 9, graph_max_lines);
-    refreshGraph(cols - 5, GPU, 20, graph_max_lines);
-    if (col_count > col_count_min){
-      col_count--;
-    }
-    else {
-      col_count = cols - padding;
-      //clearGraph(cols - padding, 10, col_count, 9);
-      //clearGraph(cols - padding, 10, col_count, 20);
-    }
+    clearGraph(cols - 5, 10, 5, 9);
+    //clearGraph(cols - 5, 10, 5, 20);
+    refreshGraph(cols - 5, cpu_data_buffer[1][0], cpu_data_buffer[1][1], 9, graph_max_lines);
+      //refreshGraph(cols - 5 - i, gpu_data_buffer[i][0], gpu_data_buffer[i][1], 20, graph_max_lines);
+
+
+
     pthread_mutex_unlock(&mutex);
     sleep(COOL_DOWN);
-  }
 
+  }
   return NULL;
 }
+
+
+
 /*** init ***/
 void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
