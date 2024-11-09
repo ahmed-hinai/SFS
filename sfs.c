@@ -19,9 +19,9 @@
 
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
-#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+R: RESTART NBFC // CTRL+Q: QUIT"
+#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 1 
+#define COOL_DOWN 0 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -125,19 +125,19 @@ int getWindowSize(int *rows, int *cols) {
     return 0;
   }
 }
-
-int restartNBFC(){
-  system("pkexec /bin/nbfc stop");
-  is_service_running = 1;
-  system("pkexec /bin/nbfc start");
-  is_service_running = 0;
-  printf("NBFC RESTARTED");
-  char command[64];
-  snprintf(command, sizeof(command), "exec %s", "./sfs.o");
-  system(command);
-  return 0;
-}
-
+/**/
+/*int restartNBFC(){*/
+/*  system("pkexec /bin/nbfc stop");*/
+/*  is_service_running = 1;*/
+/*  system("pkexec /bin/nbfc start");*/
+/*  is_service_running = 0;*/
+/*  printf("NBFC RESTARTED");*/
+/*  char command[64];*/
+/*  snprintf(command, sizeof(command), "exec %s", "./sfs.o");*/
+/*  system(command);*/
+/*  return 0;*/
+/*}*/
+/**/
 /*** input ***/
 char readKey() {
   int nread;
@@ -185,6 +185,22 @@ char* getNBFCData() {
   return output;
 }
 
+int callNBFC(char* call){
+  FILE* fp;
+  char command[256];
+  snprintf(command, sizeof(command), "/bin/nbfc set %s", call);
+
+  if (NULL == (fp = popen(command, "r"))){
+    perror("popen(). failed.");
+    return -1;
+  }
+  
+  if (pclose(fp) == -1){
+    perror("pclose failed.");
+    return -1;
+  }
+  return 0;
+}
 char* getLastToken (char* str, const char *delim) {
   char* last_token = NULL;
   char* token = strtok(str,delim);
@@ -303,7 +319,7 @@ void printFanSpeed() {
   getFanSpeeds(fan_speeds);
   char command[256];
   char* font;
-  if (W.screenrows > 26){
+  if (W.screenrows > 26 && W.screencols > 70){
     font = "slant";
   } else {
     font = "smslant";
@@ -440,44 +456,13 @@ void clearGraph(int cols, int rows, int col_min, int current_row){
 }
 
 
-/*** refreshes ***/
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//prevents threads from intefering on cursor movement
-
-void* processKeypress(){
-  char c;
-  while((c = readKey()) != EOF) {
-    pthread_mutex_lock(&mutex);
-    switch (c) {
-      case CTRL_KEY('q'):
-        printf("\x1b[2J");
-        printf("\x1b[H");
-        exit(0);
-        break;
-      case CTRL_KEY('b'):
-        if(system("/bin/nbfc set -s 100") != 0) {
-        };
-        break;
-      case CTRL_KEY('a'):
-        if(system("/bin/nbfc set -a") != 0) {
-        };
-        break;
-      case CTRL_KEY('r'):
-        if (restartNBFC() != 0){//solves some bug that prevents restart
-        };
-        break;
-
-    pthread_mutex_unlock(&mutex);
-    }
-  }
- return NULL;
+void printFanSpeeds(){
+  printf("\x1b[2;1H");//move to third row
+  printFanSpeed();
+  printf("\x1b[K");
+  fflush(stdout);
 }
 
-void refreshFanSpeeds(){
-    printf("\x1b[2;1H");//move to third row
-    printFanSpeed();
-    printf("\x1b[K");
-    fflush(stdout);
-}
 int data_buffer_size = 0;
 int cpu_data_buffer[1024][2];
 int gpu_data_buffer[1024][2];
@@ -497,6 +482,49 @@ void prepareGraphData(){
   gpu_data_buffer[data_buffer_size][1] = atof(gpu_util_buffer);
   data_buffer_size++;
 }
+
+void drawGraphOverlay(int temp, int util, int graph_row, int graph_max_lines){
+  drawGraphBorders(graph_row, graph_max_lines);
+  printCurrentValue(1, temp, graph_row); 
+  printCurrentValue(0, util, graph_row); 
+  fflush(stdout);
+}
+
+
+/*** refreshes && thread funcs ***/
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;//prevents threads from intefering on cursor movement
+
+void* processKeypress(){
+  char c;
+  while((c = readKey()) != EOF) {
+    switch (c) {
+      case CTRL_KEY('q'):
+        printf("\x1b[2J");
+        printf("\x1b[H");
+        exit(0);
+        break;
+      case CTRL_KEY('b'):
+        if(callNBFC("-s 100") != 0) {
+          perror("set to max failed.");
+          exit(1);
+          break;
+        };
+        break;
+      case CTRL_KEY('a'):
+        if(callNBFC("-a") != 0) {
+          perror("set to auto failed.");
+          exit(1);
+          break;
+        };
+        break;
+      /*case CTRL_KEY('r'):*/
+      /*  if (restartNBFC() != 0){//solves some bug that prevents restart*/
+      /*  };*/
+      /*  break;*/
+    }
+  }
+ return NULL;
+}
 void* refreshGraphData(){
   while(1){
     prepareGraphData();
@@ -504,34 +532,37 @@ void* refreshGraphData(){
   }
   return NULL;
 }
-void refreshGraph(int col_count, int temp, int util, int graph_row, int graph_max_lines){
-  drawGraphBorders(graph_row, graph_max_lines);
-  drawDataGraph(temp, util, col_count, graph_row, graph_max_lines); 
-  printCurrentValue(1, temp, graph_row); 
-  printCurrentValue(0, util, graph_row); 
-
-  fflush(stdout);
-}
-
-void* refreshScreen(){
+void* refreshGraph(){
   int cols = W.screencols;
-  int col_count_min = 5;
-  int padding = 4;
-  int col_count = cols - padding + 1;
+  int graph_max_lines = 10;
+  int current_col = cols - 3;
+  while(1){
+    for (int i = 0; i <= data_buffer_size; i++){
+      if (i > current_col - 5){
+          current_col+=i;
+    } 
+      pthread_mutex_lock(&mutex);
+      drawDataGraph(cpu_data_buffer[data_buffer_size - i][0], cpu_data_buffer[data_buffer_size - i][1], current_col - i, 9, graph_max_lines); 
+      drawDataGraph(gpu_data_buffer[data_buffer_size - i][0], gpu_data_buffer[data_buffer_size - i][1], current_col - i, 20, graph_max_lines); 
+
+      pthread_mutex_unlock(&mutex);
+    }
+    
+    fflush(stdout);
+    sleep(COOL_DOWN);
+  }
+  return NULL;
+}
+void* refreshOverlay(){
   int graph_max_lines = 10;
   while(1){
     pthread_mutex_lock(&mutex);
-    refreshFanSpeeds();
-    clearGraph(cols - 5, 10, 5, 9);
-    //clearGraph(cols - 5, 10, 5, 20);
-    refreshGraph(cols - 5, cpu_data_buffer[1][0], cpu_data_buffer[1][1], 9, graph_max_lines);
-      //refreshGraph(cols - 5 - i, gpu_data_buffer[i][0], gpu_data_buffer[i][1], 20, graph_max_lines);
-
-
-
+    printFanSpeeds();
+    drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 9, graph_max_lines);
+    drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 20, graph_max_lines);
     pthread_mutex_unlock(&mutex);
+    fflush(stdout);
     sleep(COOL_DOWN);
-
   }
   return NULL;
 }
@@ -548,15 +579,17 @@ int main() {
   printHeader();
 
 
-  pthread_t key_thread, data_prep_thread, print_thread; 
+  pthread_t key_thread, data_prep_thread, overlay_thread, graph_thread; 
 
   pthread_create(&key_thread, NULL, processKeypress, NULL);
   pthread_create(&data_prep_thread, NULL, refreshGraphData, NULL);
-  pthread_create(&print_thread, NULL, refreshScreen, NULL);
+  pthread_create(&overlay_thread, NULL, refreshOverlay, NULL);
+  pthread_create(&graph_thread, NULL, refreshGraph, NULL);
 
   pthread_join(key_thread, NULL);
   pthread_join(data_prep_thread, NULL);
-  pthread_join(print_thread, NULL);
+  pthread_join(overlay_thread, NULL);
+  pthread_join(graph_thread, NULL);
 
  return 0;
 }
