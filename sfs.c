@@ -21,7 +21,7 @@
 #define SFS_VERSION "0.0.1"
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 0 
+#define COOL_DOWN 3 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -46,7 +46,9 @@
 #define B6 "\u2586" // ▆
 #define B7 "\u2587" // ▇
 #define FULL "\u2588" // █
-
+//paddings
+#define LEFT_PADDING 5
+#define RIGHT_PADDING 3
 enum nbfcStatusKeys {
   IS_READ_ONLY = 0,
   CONFIG_NAME,
@@ -297,7 +299,36 @@ void getUtil(int device, char* util){
 
 }
 
-
+size_t data_buffer_size = 0;
+size_t tot_print_cols = 0;
+int cpu_data_buffer[1024][2] = {0};
+int gpu_data_buffer[1024][2] = {0};
+void prepareGraphData(){
+  char cpu_temp_buffer[4];
+  char cpu_util_buffer[4];
+  char gpu_temp_buffer[4];
+  char gpu_util_buffer[4];
+  
+  getGpuTemp(gpu_temp_buffer);
+  getUtil(GPU,gpu_util_buffer);
+  strcpy(cpu_temp_buffer, parseNBFCData(TEMP));
+  getUtil(CPU, cpu_util_buffer);
+  if (data_buffer_size <= tot_print_cols){
+    cpu_data_buffer[data_buffer_size][0] = atof(cpu_temp_buffer);
+    cpu_data_buffer[data_buffer_size][1] = atof(cpu_util_buffer);
+    gpu_data_buffer[data_buffer_size][0] = atof(gpu_temp_buffer);
+    gpu_data_buffer[data_buffer_size][1] = atof(gpu_util_buffer);
+    data_buffer_size++;
+  } else {
+    memmove(cpu_data_buffer, cpu_data_buffer + 1, (tot_print_cols - 1) * sizeof(cpu_data_buffer[0]));
+    memmove(gpu_data_buffer, gpu_data_buffer + 1, (tot_print_cols - 1) * sizeof(gpu_data_buffer[0]));
+    cpu_data_buffer[tot_print_cols - 1][0] = atof(cpu_temp_buffer);
+    cpu_data_buffer[tot_print_cols - 1][1] = atof(cpu_util_buffer);
+    gpu_data_buffer[tot_print_cols - 1][0] = atof(gpu_temp_buffer);
+    gpu_data_buffer[tot_print_cols - 1][1] = atof(gpu_util_buffer);
+  }
+  
+}
 
 /*** output ***/
 void printHeader(){
@@ -390,48 +421,51 @@ void printValueBlock(int i, int last_digit, char* colour, int current_row, int c
       }
 
 }
-void drawDataGraph(float ftemp, float futil, int col, int current_row, int max_lines) {
+void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
   int max_value = 100;//temp or util, 100 works as max. thank you celsius!
-  int temp = ((int)ftemp > 100) ? 100: (int)ftemp;
-  int util = ((int)futil > 100) ? 100: (int)futil;
-  int temp_diff = max_value - temp;
-  int temp_last_digit = temp - ((int)temp/10)*10;
-  int util_diff = max_value - util;
-  int util_last_digit = util - ((int)util/10)*10;
-  int smaller_diff;
-  int bigger_diff;
+  int col_start = W.screencols - RIGHT_PADDING;
+    for (int j = 0; j < (int)data_buffer_size; j++){
+      int temp = data_buffer[data_buffer_size - j][0] > 100 ? 100: data_buffer[data_buffer_size - j][0];
+      int util = data_buffer[data_buffer_size - j][1] > 100 ? 100: data_buffer[data_buffer_size - j][1];
+      int temp_diff = max_value - temp;
+      int temp_last_digit = temp - ((int)temp/10)*10;
+      int util_diff = max_value - util;
+      int util_last_digit = util - ((int)util/10)*10;
+      int smaller_diff;
+      int bigger_diff;
 
-  if (temp_diff < util_diff){
-    smaller_diff = temp_diff;
-    bigger_diff = util_diff;
-  } else {
-    smaller_diff = util_diff;
-    bigger_diff = temp_diff;
-  }
-  for (int i = 0; i < max_lines; i++) { 
-    if (i < (int)smaller_diff/10){
-      printf("\x1b[%d;%dH",i + current_row, col);
-      }
-    else if (i == (int)smaller_diff/10){
-      if (smaller_diff == temp_diff){
-        printValueBlock(i, temp_last_digit, RED, current_row, col);
-      } else {
-        printValueBlock(i, util_last_digit, YELLOW, current_row, col);
-      }
+    if (temp_diff < util_diff){
+      smaller_diff = temp_diff;
+      bigger_diff = util_diff;
+    } else {
+      smaller_diff = util_diff;
+      bigger_diff = temp_diff;
     }
-    else if (i == (int)bigger_diff/10){
-      if (bigger_diff == temp_diff){
-        printValueBlock(i, temp_last_digit, RED_ON_YELLOW, current_row, col);
-      } else {
-        printValueBlock(i, util_last_digit, YELLOW_ON_RED, current_row, col);
+    for (int i = 0; i < max_lines; i++) { 
+      if (i < (int)smaller_diff/10){
+        printf("\x1b[%d;%dH",i + current_row, col_start - j);
+        }
+      else if (i == (int)smaller_diff/10){
+        if (smaller_diff == temp_diff){
+          printValueBlock(i, temp_last_digit, RED, current_row, col_start - j);
+        } else {
+          printValueBlock(i, util_last_digit, YELLOW, current_row, col_start - j);
+        }
       }
-    }
-    else  {
-      printf("\x1b[%d;%dH%s", i + current_row, col, FULL);
+      else if (i == (int)bigger_diff/10){
+        if (bigger_diff == temp_diff){
+          printValueBlock(i, temp_last_digit, RED_ON_YELLOW, current_row, col_start - j);
+        } else {
+          printValueBlock(i, util_last_digit, YELLOW_ON_RED, current_row, col_start -  j);
+        }
+      }
+      else  {
+        printf("\x1b[%d;%dH%s", i + current_row, col_start - j, FULL);
 
+      }
     }
-  }
-  printf("%s", RESET_BG);
+    printf("%s", RESET_BG);
+   }
 }
 void printCurrentValue(int is_temp, int value, int row){
   if (is_temp){
@@ -463,25 +497,7 @@ void printFanSpeeds(){
   fflush(stdout);
 }
 
-int data_buffer_size = 0;
-int cpu_data_buffer[1024][2];
-int gpu_data_buffer[1024][2];
 
-void prepareGraphData(){
-  char cpu_temp_buffer[4];
-  char cpu_util_buffer[4];
-  char gpu_temp_buffer[4];
-  char gpu_util_buffer[4];
-  getGpuTemp(gpu_temp_buffer);
-  getUtil(GPU,gpu_util_buffer);
-  strcpy(cpu_temp_buffer, parseNBFCData(TEMP));
-  getUtil(CPU, cpu_util_buffer);
-  cpu_data_buffer[data_buffer_size][0] = atof(cpu_temp_buffer);
-  cpu_data_buffer[data_buffer_size][1] = atof(cpu_util_buffer);
-  gpu_data_buffer[data_buffer_size][0] = atof(gpu_temp_buffer);
-  gpu_data_buffer[data_buffer_size][1] = atof(gpu_util_buffer);
-  data_buffer_size++;
-}
 
 void drawGraphOverlay(int temp, int util, int graph_row, int graph_max_lines){
   drawGraphBorders(graph_row, graph_max_lines);
@@ -533,21 +549,12 @@ void* refreshGraphData(){
   return NULL;
 }
 void* refreshGraph(){
-  int cols = W.screencols;
   int graph_max_lines = 10;
-  int current_col = cols - 3;
   while(1){
-    for (int i = 0; i <= data_buffer_size; i++){
-      if (i > current_col - 5){
-          current_col+=i;
-    } 
-      pthread_mutex_lock(&mutex);
-      drawDataGraph(cpu_data_buffer[data_buffer_size - i][0], cpu_data_buffer[data_buffer_size - i][1], current_col - i, 9, graph_max_lines); 
-      drawDataGraph(gpu_data_buffer[data_buffer_size - i][0], gpu_data_buffer[data_buffer_size - i][1], current_col - i, 20, graph_max_lines); 
-
-      pthread_mutex_unlock(&mutex);
-    }
-    
+    pthread_mutex_lock(&mutex);
+    drawDataGraph(cpu_data_buffer, 9, graph_max_lines); 
+    drawDataGraph(gpu_data_buffer, 20, graph_max_lines); 
+    pthread_mutex_unlock(&mutex);
     fflush(stdout);
     sleep(COOL_DOWN);
   }
@@ -574,8 +581,10 @@ void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
 }
 int main() {
-  enableRawMode();
+
   initWindow();
+  tot_print_cols = W.screencols - LEFT_PADDING - RIGHT_PADDING;
+  enableRawMode();
   printHeader();
 
 
