@@ -21,7 +21,7 @@
 #define SFS_VERSION "0.0.1"
 #define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 3 
+#define COOL_DOWN 0 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -47,7 +47,7 @@
 #define B7 "\u2587" // ▇
 #define FULL "\u2588" // █
 //paddings
-#define LEFT_PADDING 5
+#define LEFT_PADDING 3
 #define RIGHT_PADDING 3
 enum nbfcStatusKeys {
   IS_READ_ONLY = 0,
@@ -75,12 +75,13 @@ int is_service_running = 0;
 struct windowConfig {
   int screenrows;
   int screencols;
+  int init_screenrows;
+  int init_screencols;
   struct termios orig_termios;
 };
 
 
 struct windowConfig W;
-
 
 /*** terminal ***/
 void die(const char *s) {
@@ -95,7 +96,7 @@ void die(const char *s) {
 void disableRawMode(){
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &W.orig_termios) == -1) die("tcsetattr");
 
-  printf("\33[?25h");
+  printf("\x1b[?25h");
 }
 
 void enableRawMode() {
@@ -104,7 +105,7 @@ void enableRawMode() {
   atexit(disableRawMode);
  
   struct termios raw = W.orig_termios;
-  printf("\33[?25l");
+  printf("\x1b[?25l");
   raw.c_lflag  &= ~(ECHO | ICANON | IEXTEN); //disables echo, canonical mode, and ctrl+v
   raw.c_iflag &= ~(IXON);
   raw.c_cc[VMIN] = 0;
@@ -115,11 +116,11 @@ void enableRawMode() {
 }
 
 
-int getWindowSize(int *rows, int *cols) {
+int getWindowSize(int* rows, int* cols) {
   struct winsize ws;
 
 
-  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col ==0) {
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
     return -1;
   } else {
     *cols = ws.ws_col;
@@ -127,6 +128,7 @@ int getWindowSize(int *rows, int *cols) {
     return 0;
   }
 }
+
 /**/
 /*int restartNBFC(){*/
 /*  system("pkexec /bin/nbfc stop");*/
@@ -140,6 +142,28 @@ int getWindowSize(int *rows, int *cols) {
 /*  return 0;*/
 /*}*/
 /**/
+int isNBFCRunning(){
+  FILE* fp;
+  char command[256];
+  snprintf(command, sizeof(command), "systemctl is-active --quiet nbfc_service.service");
+  if (NULL == (fp = popen(command, "r"))){
+    perror("popen(). failed");
+  }
+  int status = pclose(fp);
+  if (status == 0){
+    //running
+    is_service_running = 1;
+  }
+  else if (status == 3){
+    //not
+    is_service_running = 0; 
+  }
+  else {
+    //unknown.. maybe doesnt exist?
+    is_service_running = -1;
+  }
+  return 0;
+}
 /*** input ***/
 char readKey() {
   int nread;
@@ -313,7 +337,7 @@ void prepareGraphData(){
   getUtil(GPU,gpu_util_buffer);
   strcpy(cpu_temp_buffer, parseNBFCData(TEMP));
   getUtil(CPU, cpu_util_buffer);
-  if (data_buffer_size <= tot_print_cols){
+  if (data_buffer_size <= tot_print_cols + 1){
     cpu_data_buffer[data_buffer_size][0] = atof(cpu_temp_buffer);
     cpu_data_buffer[data_buffer_size][1] = atof(cpu_util_buffer);
     gpu_data_buffer[data_buffer_size][0] = atof(gpu_temp_buffer);
@@ -333,13 +357,25 @@ void prepareGraphData(){
 /*** output ***/
 void printHeader(){
   int cols = W.screencols;
-  //int rows = W.screenrows;
   int control_len = strlen(CONTROL_MESSAGE);
   //print control message
   printf("\x1b[2J");
+  if (control_len < cols){
   printf("\x1b[1;%dH", (cols - control_len)/2); 
   printf(CONTROL_MESSAGE);
+  }
   printf("\x1b[2;1H");
+  fflush(stdout);
+}
+
+void printErrorMessage(char* error){
+  int cols = W.screencols;
+  int rows = W.screenrows;
+  char message[256];
+  snprintf(message, sizeof(message), "%s", error);
+  int message_len = strlen(message);
+  printf("\x1b[2J");
+  printf("\x1b[%d;%dH%s",rows/2, (cols - message_len)/2, message); 
   fflush(stdout);
 }
 
@@ -352,8 +388,10 @@ void printFanSpeed() {
   char* font;
   if (W.screenrows > 26 && W.screencols > 70){
     font = "slant";
-  } else {
+  } else if (W.screenrows > 16 && W.screencols > 50) {
     font = "smslant";
+  } else {
+    font = "mini";
   }
   snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
@@ -371,17 +409,17 @@ void printFanSpeed() {
 }
 
 void drawGraphBorders(int current_row, int max_lines){
-  int col_max = W.screencols - 3;
-  int col_min = 4;
-  printf("\x1b[%d;%dH┌",current_row, col_min);
-  printf("\x1b[%d;%dH┐",current_row, col_max);
+  int col_max = W.screencols - RIGHT_PADDING;
+  int col_min = LEFT_PADDING;
+  printf("\x1b[%d;%dH┌",current_row - 1, col_min);
+  printf("\x1b[%d;%dH┐",current_row - 1, col_max);
   printf("\x1b[%d;%dH└",current_row + max_lines, col_min);
   printf("\x1b[%d;%dH┘",current_row + max_lines, col_max);
   for (int i = col_min + 1; i < col_max; i++){
-    printf("\x1b[%d;%dH─",current_row, i);
+    printf("\x1b[%d;%dH─",current_row - 1, i);
     printf("\x1b[%d;%dH─",current_row + max_lines, i);
   }
- for (int i = 1; i < max_lines; i++) { 
+ for (int i = 0; i < max_lines; i++) { 
     
     printf("\x1b[%d;%dH│",i + current_row, col_min);
     printf("\x1b[%d;%dH│",i + current_row, col_max);
@@ -467,18 +505,22 @@ void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
     printf("%s", RESET_BG);
    }
 }
-void printCurrentValue(int is_temp, int value, int row){
-  if (is_temp){
-    printf("\x1b[%d;%dH   ", row + 1, 1);
-    printf(RED);
-    printf("\x1b[%d;%dH%d", row + 1, 1, value);
-    printf(WHITE);
+void printCurrentValue(int is_temp, int value, int row, int col, int device){
+  if (device){
+    printf("%s\x1b[%d;%dH%s", WHITE, row + 10, LEFT_PADDING, "GPU");
   } else {
-    printf("\x1b[%d;%dH   ", row + 2, 1);
-    printf(ORANGE);
-    printf("\x1b[%d;%dH%d", row + 2, 1, value);
-    printf(WHITE);
+    printf("%s\x1b[%d;%dH%s", WHITE, row + 10, LEFT_PADDING, "CPU");
   }
+
+  if (is_temp){
+    //printf("\x1b[%d;%dH   ", row - 1, col);
+    printf("%s\x1b[%d;%dH%d C", RED, row + 10, col, value);
+  } else {
+    printf("%s\x1b[%d;%dH%%", YELLOW, row + 10, col - 4);
+    printf("%s\x1b[%d;%dH   ",YELLOW, row + 10, col - 7);
+    printf("%s\x1b[%d;%dH%d", YELLOW, row + 10, col - 7, value);
+  }
+  printf("%s", RESET_BG);
 }
 void clearGraph(int cols, int rows, int col_min, int current_row){
     for (int i = col_min; i <= cols; i++){
@@ -499,10 +541,10 @@ void printFanSpeeds(){
 
 
 
-void drawGraphOverlay(int temp, int util, int graph_row, int graph_max_lines){
+void drawGraphOverlay(int temp, int util, int graph_row, int graph_col, int graph_max_lines, int device){
   drawGraphBorders(graph_row, graph_max_lines);
-  printCurrentValue(1, temp, graph_row); 
-  printCurrentValue(0, util, graph_row); 
+  printCurrentValue(1, temp, graph_row, graph_col, device); 
+  printCurrentValue(0, util, graph_row, graph_col, device); 
   fflush(stdout);
 }
 
@@ -552,11 +594,14 @@ void* refreshGraph(){
   int graph_max_lines = 10;
   while(1){
     pthread_mutex_lock(&mutex);
-    drawDataGraph(cpu_data_buffer, 9, graph_max_lines); 
-    drawDataGraph(gpu_data_buffer, 20, graph_max_lines); 
+    clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 11);
+    drawDataGraph(cpu_data_buffer, 11, graph_max_lines); 
+    clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 23);
+    drawDataGraph(gpu_data_buffer, 23, graph_max_lines); 
     pthread_mutex_unlock(&mutex);
     fflush(stdout);
     sleep(COOL_DOWN);
+
   }
   return NULL;
 }
@@ -565,8 +610,8 @@ void* refreshOverlay(){
   while(1){
     pthread_mutex_lock(&mutex);
     printFanSpeeds();
-    drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 9, graph_max_lines);
-    drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 20, graph_max_lines);
+    drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 11, W.screencols - 8, graph_max_lines, CPU);
+    drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 23, W.screencols - 8, graph_max_lines, GPU);
     pthread_mutex_unlock(&mutex);
     fflush(stdout);
     sleep(COOL_DOWN);
@@ -574,31 +619,63 @@ void* refreshOverlay(){
   return NULL;
 }
 
-
-
 /*** init ***/
 void initWindow() {
   if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
+  W.init_screenrows = W.screenrows;
+  W.init_screencols = W.screencols;
 }
+void refreshWindow() {
+  if (getWindowSize(&W.screenrows, &W.screencols) == -1) die("getWindowSize");
+  tot_print_cols = W.screencols - LEFT_PADDING - RIGHT_PADDING - 2;
+}
+
+
+void* refreshTerminalData(){
+  while(1){
+    refreshWindow();
+    if (W.init_screencols != W.screencols || W.init_screenrows != W.screenrows){
+      if (W.init_screencols > W.screencols){
+        initWindow();
+        if (data_buffer_size > tot_print_cols){
+          data_buffer_size = tot_print_cols;
+          printHeader();
+        }
+        printHeader();
+
+      } else {
+        initWindow();
+        printHeader();
+      }
+
+    }
+    //isNBFCRunning();
+   usleep(30000);
+  }
+  return NULL;
+}
+
+
 int main() {
-
   initWindow();
-  tot_print_cols = W.screencols - LEFT_PADDING - RIGHT_PADDING;
   enableRawMode();
-  printHeader();
+  if (1) {
+    printHeader();
+    pthread_t key_thread, data_prep_thread, overlay_thread, graph_thread, term_thread; 
 
+    pthread_create(&key_thread, NULL, processKeypress, NULL);
+    pthread_create(&term_thread, NULL, refreshTerminalData, NULL);
+    pthread_create(&data_prep_thread, NULL, refreshGraphData, NULL);
+    pthread_create(&overlay_thread, NULL, refreshOverlay, NULL);
+    pthread_create(&graph_thread, NULL, refreshGraph, NULL);
 
-  pthread_t key_thread, data_prep_thread, overlay_thread, graph_thread; 
-
-  pthread_create(&key_thread, NULL, processKeypress, NULL);
-  pthread_create(&data_prep_thread, NULL, refreshGraphData, NULL);
-  pthread_create(&overlay_thread, NULL, refreshOverlay, NULL);
-  pthread_create(&graph_thread, NULL, refreshGraph, NULL);
-
-  pthread_join(key_thread, NULL);
-  pthread_join(data_prep_thread, NULL);
-  pthread_join(overlay_thread, NULL);
-  pthread_join(graph_thread, NULL);
-
+    pthread_join(key_thread, NULL);
+    pthread_join(term_thread, NULL);
+    pthread_join(data_prep_thread, NULL);
+    pthread_join(overlay_thread, NULL);
+    pthread_join(graph_thread, NULL);
+  } else {
+    printErrorMessage("NBFC service is not running.");
+  }
  return 0;
 }
