@@ -15,7 +15,7 @@ SFS is a TUI for nbfc-linux I made while learning C. I personally wanted an alte
 
 1. Install [nbfc-linux](https://github.com/nbfc-linux/nbfc-linux).
 2. Install Figlet using your package manager.
-2. Clone and install
+3. Clone and install.
 
   ```bash
 git clone https://github.com/ahmed-hinai/SFS.git
@@ -27,4 +27,9 @@ cd SFS
 
   ```bash
 make install
+  ```
+## Uninstall
+
+  ```bash
+make uninstall
   ```

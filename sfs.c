@@ -73,6 +73,10 @@ enum nbfcStatusKeys {
 /*** globals ***/
 int is_service_stopped = 0;
 int is_window_too_small = 0;
+int is_nvidia = 0;
+int is_amd = 0;
+int cpu_graph_row = 11;
+int gpu_graph_row = 23;
 /*** structs ***/
 struct windowConfig {
   int screenrows;
@@ -130,6 +134,23 @@ int getWindowSize(int* rows, int* cols) {
     *rows = ws.ws_row;
     return 0;
   }
+}
+
+void checkVideoCardVendor(){
+  char buffer[256];
+  FILE* fp = popen("lspci | grep -iE 'nvidia|amd'", "r");
+  if (fp == NULL) {
+    perror("popen");
+    return;
+  }
+  while (fgets(buffer, sizeof(buffer), fp)) {
+    if (strstr(buffer, "NVIDIA") != NULL) { //strstr looks for substring in string
+      is_nvidia  = 1;
+    } else if (strstr(buffer, "AMD") != NULL) {
+      is_amd = 1;
+    }
+  }
+  pclose(fp);
 }
 
 int isNBFCRunning(){
@@ -279,7 +300,12 @@ void getFanSpeeds(double* buffer) {
 
 void getGpuTemp(char* temp){
   char buffer[4];
-  FILE* fp = popen("nvidia-smi -q | awk '/^ *GPU Current Temp/ {print $(NF-1)}'","r");
+  FILE* fp;
+  if (is_nvidia){
+    fp = popen("nvidia-smi -q | awk '/^ *GPU Current Temp/ {print $(NF-1)}'","r");
+  } else if (is_amd){
+    fp = popen("amdpro | awk '/^ *GPU Current Temp/ {print $(NF-1)}'","r"); //need to check amdpro output
+  }
   if (fp == NULL){
     perror("popen(). failed");
     return;
@@ -298,7 +324,12 @@ void getUtil(int device, char* util){
       fp = popen("top -b -n 1 | awk '/^ *%Cpu/ {for(i=1;i<=NF;i++) if($i ~/id/) {print 100 - $(i-1)}}'", "r");
       break;
     case 1:
-      fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+      if (is_nvidia){
+        fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+      }
+      else if (is_amd){
+        fp = popen("nvidia-smi -q | awk '/Utilization/{getline; print $(NF-1)}'", "r");
+      }
       break;
   }
   if (fp == NULL){
@@ -385,12 +416,20 @@ void printFanSpeed() {
   getFanSpeeds(fan_speeds);
   char command[256];
   char* font;
-  if (W.screenrows > 26 && W.screencols > 70){
+  if (W.screenrows > 32 && W.screencols > 70){
+    cpu_graph_row = 11;
+    gpu_graph_row = 23;
     font = "mono9";
-  } else if (W.screenrows > 16 && W.screencols > 37) {
+  } else if (W.screenrows > 30 && W.screencols > 37) {
+    cpu_graph_row = 9;
+    gpu_graph_row = 21;
     font = "smmono9";
-  } else {
+  } else if (W.screenrows > 29) {
+    cpu_graph_row = 7;
+    gpu_graph_row = 19;
     font = "mini";
+  } else {
+    is_window_too_small = 1;
   }
   snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d ./fonts  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
@@ -406,6 +445,16 @@ void printFanSpeed() {
   
   pclose(fp);
 }
+
+void clearGraph(int cols, int rows, int col_min, int current_row){
+    for (int i = col_min; i <= cols; i++){
+      for (int k = current_row + 1; k < current_row + rows; k++){
+      printf("\x1b[%d;%dH ",k, i);
+      fflush(stdout);
+    }
+  }
+}
+
 
 void drawGraphBorders(int current_row, int max_lines){
   int col_max = W.screencols - RIGHT_PADDING;
@@ -483,6 +532,7 @@ void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
         printf("\x1b[%d;%dH",i + current_row, col_start - j);
         }
       else if (i == (int)smaller_diff/10){
+        clearGraph(W.screencols - RIGHT_PADDING - 1, i, LEFT_PADDING + 1, current_row);
         if (smaller_diff == temp_diff){
           printValueBlock(i, temp_last_digit, RED, current_row, col_start - j);
         } else {
@@ -520,15 +570,6 @@ void printCurrentValue(int is_temp, int value, int row, int col, int device){
   }
   printf("%s", RESET_BG);
 }
-void clearGraph(int cols, int rows, int col_min, int current_row){
-    for (int i = col_min; i <= cols; i++){
-      for (int k = current_row + 1; k < current_row + rows; k++){
-      printf("\x1b[%d;%dH ",k, i);
-      fflush(stdout);
-    }
-  }
-}
-
 
 void printFanSpeeds(){
   printf("\x1b[2;1H");
@@ -595,12 +636,8 @@ void* refreshGraph(){
   while(1){
     if (!is_window_too_small && !is_service_stopped){
       pthread_mutex_lock(&mutex);
-      clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 11);
-      usleep(100);
-      drawDataGraph(cpu_data_buffer, 11, graph_max_lines); 
-      clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 23);
-      usleep(100);
-      drawDataGraph(gpu_data_buffer, 23, graph_max_lines); 
+      drawDataGraph(cpu_data_buffer, cpu_graph_row, graph_max_lines); 
+      drawDataGraph(gpu_data_buffer, gpu_graph_row, graph_max_lines); 
       pthread_mutex_unlock(&mutex);
       fflush(stdout);
       sleep(COOL_DOWN);
@@ -614,8 +651,8 @@ void* refreshOverlay(){
     if (!is_window_too_small && !is_service_stopped){
       pthread_mutex_lock(&mutex);
       printFanSpeeds();
-      drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 11, W.screencols - 8, graph_max_lines, CPU);
-      drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 23, W.screencols - 8, graph_max_lines, GPU);
+      drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], cpu_graph_row, W.screencols - 8, graph_max_lines, CPU);
+      drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], gpu_graph_row, W.screencols - 8, graph_max_lines, GPU);
       pthread_mutex_unlock(&mutex);
       fflush(stdout);
       sleep(COOL_DOWN);
@@ -669,6 +706,7 @@ void* refreshTerminalData(){
 
 
 int main() {
+  checkVideoCardVendor();
   initWindow();
   enableRawMode();
 

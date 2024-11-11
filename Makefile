@@ -18,4 +18,6 @@ install: $(TARGET)
 clean:
 	rm -f $(OBJ) $(TARGET)
 
+uninstall: $(TARGET)
+	rm -f $(INSTALL_DIR)/$(TARGET)
 
