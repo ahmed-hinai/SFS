@@ -1,3 +1,5 @@
+![Screenshot_20241111_164237](https://github.com/user-attachments/assets/50215e41-627a-494c-be37-8996565eaaea)
+
 # SFS - Show Fan Speeds
 
 SFS is a TUI for nbfc-linux I made while learning C. I personally wanted an alternative for Acer NitroSense working on linux as I just like to monitor my fan speeds :).  
