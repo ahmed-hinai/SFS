@@ -19,9 +19,10 @@
 
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
-#define CONTROL_MESSAGE  "CTRL+ B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
+#define CONTROL_MESSAGE  "CTRL+B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
+#define SM_CONTROL_MESSAGE "CTRL+B // CTRL+A // CTRL+Q"
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define COOL_DOWN 0 
+#define COOL_DOWN 2 
 #define CPU 0
 #define GPU 1
 //colors for cli output
@@ -70,7 +71,8 @@ enum nbfcStatusKeys {
 };
 
 /*** globals ***/
-int is_service_running = 0;
+int is_service_stopped = 0;
+int is_window_too_small = 0;
 /*** structs ***/
 struct windowConfig {
   int screenrows;
@@ -92,6 +94,7 @@ void die(const char *s) {
 
 
 }
+
 
 void disableRawMode(){
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &W.orig_termios) == -1) die("tcsetattr");
@@ -132,9 +135,9 @@ int getWindowSize(int* rows, int* cols) {
 /**/
 /*int restartNBFC(){*/
 /*  system("pkexec /bin/nbfc stop");*/
-/*  is_service_running = 1;*/
+/*  is_service_stopped = 1;*/
 /*  system("pkexec /bin/nbfc start");*/
-/*  is_service_running = 0;*/
+/*  is_service_stopped = 0;*/
 /*  printf("NBFC RESTARTED");*/
 /*  char command[64];*/
 /*  snprintf(command, sizeof(command), "exec %s", "./sfs.o");*/
@@ -152,15 +155,15 @@ int isNBFCRunning(){
   int status = pclose(fp);
   if (status == 0){
     //running
-    is_service_running = 1;
+    is_service_stopped = 0;
   }
   else if (status == 3){
     //not
-    is_service_running = 0; 
+    is_service_stopped = 1; 
   }
   else {
     //unknown.. maybe doesnt exist?
-    is_service_running = -1;
+    is_service_stopped = 1;
   }
   return 0;
 }
@@ -241,7 +244,7 @@ char* getLastToken (char* str, const char *delim) {
 
 
 char* parseNBFCData(int key) {
-  while(is_service_running == 1){
+  while(is_service_stopped == 1){
     sleep(100);
     printf("timed out");
     break;
@@ -358,12 +361,22 @@ void prepareGraphData(){
 void printHeader(){
   int cols = W.screencols;
   int control_len = strlen(CONTROL_MESSAGE);
+  int sm_control_len = strlen(SM_CONTROL_MESSAGE);
   //print control message
   printf("\x1b[2J");
   if (control_len < cols){
-  printf("\x1b[1;%dH", (cols - control_len)/2); 
-  printf(CONTROL_MESSAGE);
+    is_window_too_small = 0;
+    printf("\x1b[1;%dH", (cols - control_len)/2); 
+    printf(CONTROL_MESSAGE);
+  } 
+  else if (sm_control_len < cols) {
+    is_window_too_small = 0;
+    printf("\x1b[1;%dH", (cols - sm_control_len)/2); 
+    printf(SM_CONTROL_MESSAGE);
+  } else {
+    is_window_too_small = 1;
   }
+
   printf("\x1b[2;1H");
   fflush(stdout);
 }
@@ -382,18 +395,18 @@ void printErrorMessage(char* error){
 
 void printFanSpeed() {
   double fan_speeds[2] = {0};
-  int space_len = 8;
+  int space_len = 0;
   getFanSpeeds(fan_speeds);
   char command[256];
   char* font;
   if (W.screenrows > 26 && W.screencols > 70){
-    font = "slant";
-  } else if (W.screenrows > 16 && W.screencols > 50) {
-    font = "smslant";
+    font = "mono9";
+  } else if (W.screenrows > 16 && W.screencols > 37) {
+    font = "smmono9";
   } else {
     font = "mini";
   }
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d ./fonts  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
@@ -585,36 +598,41 @@ void* processKeypress(){
 }
 void* refreshGraphData(){
   while(1){
-    prepareGraphData();
-    sleep(COOL_DOWN);
+    if (!is_service_stopped){
+      prepareGraphData();
+      sleep(COOL_DOWN);
+    }
   }
   return NULL;
 }
 void* refreshGraph(){
   int graph_max_lines = 10;
   while(1){
-    pthread_mutex_lock(&mutex);
-    clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 11);
-    drawDataGraph(cpu_data_buffer, 11, graph_max_lines); 
-    clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 23);
-    drawDataGraph(gpu_data_buffer, 23, graph_max_lines); 
-    pthread_mutex_unlock(&mutex);
-    fflush(stdout);
-    sleep(COOL_DOWN);
-
-  }
+    if (!is_window_too_small && !is_service_stopped){
+      pthread_mutex_lock(&mutex);
+      clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 11);
+      drawDataGraph(cpu_data_buffer, 11, graph_max_lines); 
+      clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 23);
+      drawDataGraph(gpu_data_buffer, 23, graph_max_lines); 
+      pthread_mutex_unlock(&mutex);
+      fflush(stdout);
+      sleep(COOL_DOWN);
+    }
+     }
   return NULL;
 }
 void* refreshOverlay(){
   int graph_max_lines = 10;
   while(1){
-    pthread_mutex_lock(&mutex);
-    printFanSpeeds();
-    drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 11, W.screencols - 8, graph_max_lines, CPU);
-    drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 23, W.screencols - 8, graph_max_lines, GPU);
-    pthread_mutex_unlock(&mutex);
-    fflush(stdout);
-    sleep(COOL_DOWN);
+    if (!is_window_too_small && !is_service_stopped){
+      pthread_mutex_lock(&mutex);
+      printFanSpeeds();
+      drawGraphOverlay(cpu_data_buffer[data_buffer_size-1][0], cpu_data_buffer[data_buffer_size-1][1], 11, W.screencols - 8, graph_max_lines, CPU);
+      drawGraphOverlay(gpu_data_buffer[data_buffer_size-1][0], gpu_data_buffer[data_buffer_size-1][1], 23, W.screencols - 8, graph_max_lines, GPU);
+      pthread_mutex_unlock(&mutex);
+      fflush(stdout);
+      sleep(COOL_DOWN);
+    }
   }
   return NULL;
 }
@@ -632,8 +650,10 @@ void refreshWindow() {
 
 
 void* refreshTerminalData(){
+  int refresh_rate = 30000;
   while(1){
     refreshWindow();
+    isNBFCRunning();
     if (W.init_screencols != W.screencols || W.init_screenrows != W.screenrows){
       if (W.init_screencols > W.screencols){
         initWindow();
@@ -650,7 +670,14 @@ void* refreshTerminalData(){
 
     }
     //isNBFCRunning();
-   usleep(30000);
+    if (is_window_too_small){
+      printErrorMessage("Window is too small!");
+    }
+    if (is_service_stopped){
+
+      printErrorMessage("NBFC service is not running");
+    }
+   usleep(refresh_rate);
   }
   return NULL;
 }
@@ -659,7 +686,7 @@ void* refreshTerminalData(){
 int main() {
   initWindow();
   enableRawMode();
-  if (1) {
+
     printHeader();
     pthread_t key_thread, data_prep_thread, overlay_thread, graph_thread, term_thread; 
 
@@ -674,8 +701,6 @@ int main() {
     pthread_join(data_prep_thread, NULL);
     pthread_join(overlay_thread, NULL);
     pthread_join(graph_thread, NULL);
-  } else {
-    printErrorMessage("NBFC service is not running.");
-  }
+
  return 0;
 }
