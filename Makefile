@@ -3,6 +3,8 @@ CFLAGS = -Wall -Wextra -pedantic -lpthread
 OBJ = sfs.o  
 TARGET = sfs
 INSTALL_DIR = /usr/local/bin
+ASSET_DIR = /usr/local/share/$(TARGET)
+ASSETS = ./fonts/mono9.tlf ./fonts/mini.flf ./fonts/smmono9.tlf
 
 all: $(TARGET)
 
@@ -14,6 +16,8 @@ sfs.o: sfs.c
 
 install: $(TARGET)
 	install -m 755 $(TARGET) $(INSTALL_DIR)
+	mkdir -p $(ASSET_DIR)
+	install -m 644 $(ASSETS) $(ASSET_DIR)
 
 clean:
 	rm -f $(OBJ) $(TARGET)
