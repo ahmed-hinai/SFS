@@ -132,19 +132,6 @@ int getWindowSize(int* rows, int* cols) {
   }
 }
 
-/**/
-/*int restartNBFC(){*/
-/*  system("pkexec /bin/nbfc stop");*/
-/*  is_service_stopped = 1;*/
-/*  system("pkexec /bin/nbfc start");*/
-/*  is_service_stopped = 0;*/
-/*  printf("NBFC RESTARTED");*/
-/*  char command[64];*/
-/*  snprintf(command, sizeof(command), "exec %s", "./sfs.o");*/
-/*  system(command);*/
-/*  return 0;*/
-/*}*/
-/**/
 int isNBFCRunning(){
   FILE* fp;
   char command[256];
@@ -362,7 +349,6 @@ void printHeader(){
   int cols = W.screencols;
   int control_len = strlen(CONTROL_MESSAGE);
   int sm_control_len = strlen(SM_CONTROL_MESSAGE);
-  //print control message
   printf("\x1b[2J");
   if (control_len < cols){
     is_window_too_small = 0;
@@ -526,7 +512,6 @@ void printCurrentValue(int is_temp, int value, int row, int col, int device){
   }
 
   if (is_temp){
-    //printf("\x1b[%d;%dH   ", row - 1, col);
     printf("%s\x1b[%d;%dH%d C", RED, row + 10, col, value);
   } else {
     printf("%s\x1b[%d;%dH%%", YELLOW, row + 10, col - 4);
@@ -546,7 +531,7 @@ void clearGraph(int cols, int rows, int col_min, int current_row){
 
 
 void printFanSpeeds(){
-  printf("\x1b[2;1H");//move to third row
+  printf("\x1b[2;1H");
   printFanSpeed();
   printf("\x1b[K");
   fflush(stdout);
@@ -611,8 +596,10 @@ void* refreshGraph(){
     if (!is_window_too_small && !is_service_stopped){
       pthread_mutex_lock(&mutex);
       clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 11);
+      usleep(100);
       drawDataGraph(cpu_data_buffer, 11, graph_max_lines); 
       clearGraph(W.screencols - RIGHT_PADDING - 1, 10, LEFT_PADDING + 1, 23);
+      usleep(100);
       drawDataGraph(gpu_data_buffer, 23, graph_max_lines); 
       pthread_mutex_unlock(&mutex);
       fflush(stdout);
@@ -650,7 +637,6 @@ void refreshWindow() {
 
 
 void* refreshTerminalData(){
-  int refresh_rate = 30000;
   while(1){
     refreshWindow();
     isNBFCRunning();
@@ -674,10 +660,9 @@ void* refreshTerminalData(){
       printErrorMessage("Window is too small!");
     }
     if (is_service_stopped){
-
       printErrorMessage("NBFC service is not running");
     }
-   usleep(refresh_rate);
+   usleep(30000);
   }
   return NULL;
 }
