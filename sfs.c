@@ -431,7 +431,7 @@ void printFanSpeed() {
   } else {
     is_window_too_small = 1;
   }
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d ./fonts  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d /usr/local/share/sfs/  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
