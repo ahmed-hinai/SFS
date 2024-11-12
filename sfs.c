@@ -19,7 +19,7 @@
 
 /*** defines ***/
 #define SFS_VERSION "0.0.1"
-#define CONTROL_MESSAGE  "CTRL+B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT"
+#define CONTROL_MESSAGE  "CPU FAN      || CTRL+B: MAX // CTRL+A: AUTO // CTRL+Q: QUIT ||      GPU FAN"
 #define SM_CONTROL_MESSAGE "CTRL+B // CTRL+A // CTRL+Q"
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define COOL_DOWN 2 
