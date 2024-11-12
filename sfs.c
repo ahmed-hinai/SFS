@@ -538,16 +538,31 @@ void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
           printValueBlock(i, util_last_digit, YELLOW, current_row, col_start - j);
         }
       }
-      else if (i == (int)bigger_diff/10){
-        if (bigger_diff == temp_diff){
-          printValueBlock(i, temp_last_digit, RED_ON_YELLOW, current_row, col_start - j);
-        } else {
-          printValueBlock(i, util_last_digit, YELLOW_ON_RED, current_row, col_start -  j);
+      else if (i > (int)smaller_diff/10){
+        if (i == (int)bigger_diff/10){
+          if (bigger_diff == temp_diff){
+            printValueBlock(i, temp_last_digit, RED_ON_YELLOW, current_row, col_start - j);
+          } else {
+            printValueBlock(i, util_last_digit, YELLOW_ON_RED, current_row, col_start -  j);
+          }
         }
-      }
-      else  {
-        printf("\x1b[%d;%dH%s", i + current_row, col_start - j, FULL);
+        else if (i < (int)bigger_diff/10){
+          if (smaller_diff== temp_diff){
+            printf("%s\x1b[%d;%dH%s", RED, i + current_row, col_start - j, FULL);
+          } else {
+            printf("%s\x1b[%d;%dH%s", YELLOW, i + current_row, col_start - j, FULL);
+          }
+        }
+        else if (i > (int)bigger_diff/10) {
+          if (bigger_diff == temp_diff){
+            printf("%s\x1b[%d;%dH%s", RED, i + current_row, col_start - j, FULL);
+          } else {
+            printf("%s\x1b[%d;%dH%s", YELLOW, i + current_row, col_start - j, FULL);
+          }
 
+
+
+      }
       }
     }
     printf("%s", RESET_BG);
