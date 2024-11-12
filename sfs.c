@@ -431,7 +431,7 @@ void printFanSpeed() {
   } else {
     is_window_too_small = 1;
   }
-  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d /usr/local/share/sfs/  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
+  snprintf(command, sizeof(command), "echo \"%-*d %-*d\" | figlet -d /usr/local/share/sfs/fonts  -f %s -w $(tput cols) -c", space_len, (int)fan_speeds[0], space_len, (int)fan_speeds[1], font);
   FILE* fp = popen(command, "r");
   if (fp == NULL) {
       perror("popen failed");
@@ -477,40 +477,40 @@ void drawGraphBorders(int current_row, int max_lines){
 
 
 void printValueBlock(int i, int last_digit, char* colour, int current_row, int col){
-      switch (last_digit) {
-        case 0:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, FULL); 
-          break;
-        case 1:
-        case 2:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B1); 
-          break;
-        case 3:
-        case 4:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B2); 
-          break;
-        case 5:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B3); 
-          break;
-        case 6:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B4); 
-          break;
-        case 7:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B5); 
-          break;
-        case 8:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B6); 
-          break;
-        case 9:
-          printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B7); 
-          break; 
-      }
+  switch (last_digit) {
+    case 0:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, FULL); 
+      break;
+    case 1:
+    case 2:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B1); 
+      break;
+    case 3:
+    case 4:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B2); 
+      break;
+    case 5:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B3); 
+      break;
+    case 6:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B4); 
+      break;
+    case 7:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B5); 
+      break;
+    case 8:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B6); 
+      break;
+    case 9:
+      printf("%s\x1b[%d;%dH%s", colour, i + current_row, col, B7); 
+      break; 
+  }
 
 }
 void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
   int max_value = 100;//temp or util, 100 works as max. thank you celsius!
   int col_start = W.screencols - RIGHT_PADDING;
-    for (int j = 0; j < (int)data_buffer_size; j++){
+    for (int j = 1; j < (int)data_buffer_size; j++){
       int temp = data_buffer[data_buffer_size - j][0] > 100 ? 100: data_buffer[data_buffer_size - j][0];
       int util = data_buffer[data_buffer_size - j][1] > 100 ? 100: data_buffer[data_buffer_size - j][1];
       int temp_diff = max_value - temp;
@@ -529,10 +529,9 @@ void drawDataGraph(int data_buffer[][2], int current_row, int max_lines) {
     }
     for (int i = 0; i < max_lines; i++) { 
       if (i < (int)smaller_diff/10){
-        printf("\x1b[%d;%dH",i + current_row, col_start - j);
+        printf("\x1b[%d;%dH ",i + current_row, col_start - j);
         }
       else if (i == (int)smaller_diff/10){
-        clearGraph(W.screencols - RIGHT_PADDING - 1, i, LEFT_PADDING + 1, current_row);
         if (smaller_diff == temp_diff){
           printValueBlock(i, temp_last_digit, RED, current_row, col_start - j);
         } else {

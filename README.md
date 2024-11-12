@@ -31,5 +31,5 @@ make install
 ## Uninstall
 
   ```bash
-make uninstall
+make uninstall clean
   ```
