@@ -1,4 +1,4 @@
-![Screenshot_20241111_164237](https://github.com/user-attachments/assets/50215e41-627a-494c-be37-8996565eaaea)
+![Screenshot_20241114_114133](https://github.com/user-attachments/assets/b07aff67-8202-4f38-a53a-e9ffe92852c3)
 
 # SFS - Show Fan Speeds
 
