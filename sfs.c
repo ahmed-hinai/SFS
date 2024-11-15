@@ -189,11 +189,10 @@ char readKey() {
 /*** data ***/
 char* getNBFCData() {
   
-
   FILE* fpipe;
   char* command = "/bin/nbfc status";//this can cause fatal Error if nbfc is offline
   char buffer[64];
-  char* output = NULL;
+  static char output[1024] = {0};
   size_t total_size = 0;
   if (NULL == (fpipe = popen(command, "r"))){
     perror("popen(). failed.");
@@ -201,22 +200,11 @@ char* getNBFCData() {
 
   while (fgets(buffer, sizeof(buffer), fpipe) != NULL) {
     size_t len = strlen(buffer);
-    //resize output buffer to fit new data
-    char* temp = realloc(output, total_size + len + 1); //need +1 for null terminator
-    if (temp == NULL) {
-      perror("realloc failed");
-      free(output);
-      pclose(fpipe);
-      return NULL;
-    }
-    output = temp;
-    //copy the buffer to the end of output
     strcpy(output + total_size, buffer);
     total_size += len; 
   }
   if (pclose(fpipe) == -1){
     perror("pclose failed.");
-    free(output);
     return NULL;
   }
   return output;
