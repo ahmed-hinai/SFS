@@ -11,7 +11,8 @@ SFS is a TUI for nbfc-linux I made while learning C. I personally wanted an alte
 - **A keybind to set fan speed target to max/auto**
 - **Temperature and utilization monitor**
 
-![Screenshot_20241114_114133](https://github.com/user-attachments/assets/b07aff67-8202-4f38-a53a-e9ffe92852c3)
+![sfs](https://github.com/user-attachments/assets/daeb74fa-92e6-483d-bcd9-65ded4a3c991)
+
 
 ## Installation
 
