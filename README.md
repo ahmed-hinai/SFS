@@ -1,4 +1,4 @@
-![Screenshot_20241114_114133](https://github.com/user-attachments/assets/b07aff67-8202-4f38-a53a-e9ffe92852c3)
+![sfs](https://github.com/user-attachments/assets/39acb1c7-459b-4476-b52f-1e52182f6dc8)
 
 # SFS - Show Fan Speeds
 
@@ -10,6 +10,8 @@ SFS is a TUI for nbfc-linux I made while learning C. I personally wanted an alte
 - **Fan speed monitor**
 - **A keybind to set fan speed target to max/auto**
 - **Temperature and utilization monitor**
+
+![Screenshot_20241114_114133](https://github.com/user-attachments/assets/b07aff67-8202-4f38-a53a-e9ffe92852c3)
 
 ## Installation
 
