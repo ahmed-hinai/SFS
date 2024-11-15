@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=0.1
+Name=sfs
+GenericName=Fan & Temp Monitor
+Comment=Shows Fan Speeds and monitors system temperatures and utilization data.
+Icon=/usr/local/share/sfs/sfs.png
+Exec=/usr/local/bin/sfs
+Terminal=true
+Categories=System;Monitor;ConsoleOnly;
+Keywords=system;fan;speeds
