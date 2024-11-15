@@ -197,7 +197,6 @@ char* getNBFCData() {
   if (NULL == (fpipe = popen(command, "r"))){
     perror("popen(). failed.");
   }
-
   while (fgets(buffer, sizeof(buffer), fpipe) != NULL) {
     size_t len = strlen(buffer);
     strcpy(output + total_size, buffer);
@@ -353,12 +352,12 @@ void prepareGraphData(){
     gpu_data_buffer[data_buffer_size][1] = atof(gpu_util_buffer);
     data_buffer_size++;
   } else {
-    memmove(cpu_data_buffer, cpu_data_buffer + 1, (tot_print_cols - 1) * sizeof(cpu_data_buffer[0]));
-    memmove(gpu_data_buffer, gpu_data_buffer + 1, (tot_print_cols - 1) * sizeof(gpu_data_buffer[0]));
-    cpu_data_buffer[tot_print_cols - 1][0] = atof(cpu_temp_buffer);
-    cpu_data_buffer[tot_print_cols - 1][1] = atof(cpu_util_buffer);
-    gpu_data_buffer[tot_print_cols - 1][0] = atof(gpu_temp_buffer);
-    gpu_data_buffer[tot_print_cols - 1][1] = atof(gpu_util_buffer);
+    memmove(cpu_data_buffer, cpu_data_buffer + 1, (tot_print_cols + 1) * sizeof(cpu_data_buffer[0]));
+    memmove(gpu_data_buffer, gpu_data_buffer + 1, (tot_print_cols + 1) * sizeof(gpu_data_buffer[0]));
+    cpu_data_buffer[tot_print_cols + 1][0] = atof(cpu_temp_buffer);
+    cpu_data_buffer[tot_print_cols + 1][1] = atof(cpu_util_buffer);
+    gpu_data_buffer[tot_print_cols + 1][0] = atof(gpu_temp_buffer);
+    gpu_data_buffer[tot_print_cols + 1][1] = atof(gpu_util_buffer);
   }
   
 }
