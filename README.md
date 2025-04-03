@@ -40,7 +40,7 @@ make uninstall clean
 ## Binding The NitroSense Key
 
 The NitroSense key has a scancode "f5" and mapped to keycode 425, which is not recognized in KDE. You can use udev or setkeycodes (download from your pkg manager) to map it to another keycode. 
-More info here: ![Map scancodes to keycodes](https://wiki.archlinux.org/title/Map_scancodes_to_keycodes)
+More info here: [Map scancodes to keycodes](https://wiki.archlinux.org/title/Map_scancodes_to_keycodes)
 
 I chose to map it to ScreenLock (keycode 70), like so:
 
