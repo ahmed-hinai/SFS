@@ -46,21 +46,25 @@
 enum nbfcStatusKeys {
   IS_READ_ONLY = 0,
   CONFIG_NAME,
-  TEMP,
   SKIP1, //nbfc status prints 2 empty new lines. this skips them. this works i guess?
   CPU_FAN,
+  TEMP,
   CPU_IS_AUTO_ENABLED,
   CPU_IS_CRITICAL_ENABLED,
   CPU_CURRENT_FAN_SPEED,
   CPU_TARGET_FAN_SPEED,
+  CPU_REQUESTED_FAN_SPEED,
   CPU_FAN_SPEED_STEPS,
   SKIP2,
   GPU_FAN,
+  GPU_TEMP,
   GPU_IS_AUTO_ENABLED,
   GPU_IS_CRITICAL_ENABLED,
   GPU_CURRENT_FAN_SPEED,
   GPU_TARGET_FAN_SPEED,
-  GPU_FAN_SPEED_STEPS
+  GPU_REQUESTED_FAN_SPEED,
+  GPU_FAN_SPEED_STEPS,
+  SKIP3
 };
 
 /*** globals ***/
@@ -130,7 +134,7 @@ int getWindowSize(int* rows, int* cols) {
 }
 
 void checkVideoCardVendor(){
-  char buffer[256];
+  char buffer[512];
   FILE* fp = popen("lspci | grep -iE 'nvidia|amd'", "r");
   if (fp == NULL) {
     perror("popen");
@@ -238,13 +242,13 @@ char* parseNBFCData(int key) {
     break;
   }
   const char* raw_data = getNBFCData();
-  char* lines[17];
+  char* lines[21];
   char line[64];
   int line_count = 0;
   const char* start = raw_data;
-  char* data_table[17] = {NULL};
+  char* data_table[21] = {NULL};
   //split output string into lines
-  while(*start && line_count < 17) {
+  while(*start && line_count < 21) {
     const char* end = strchr(start, '\n');//strchr to find first occurance of \n i.e end of a line
     if (end) {
       size_t length = end - start;
@@ -260,7 +264,7 @@ char* parseNBFCData(int key) {
     }
   }
   for (int i = 0; i < line_count; i++){
-    if (i != 4 && i != 10){//skip the new lines between temp and cpu display name and  between cpu and gpu data. i dont like this
+    if (i != 3 && i != 12 && i != 21){//skip the new lines between temp and cpu display name and  between cpu and gpu data. i dont like this
       data_table[i] = getLastToken(lines[i], ":");
     }
   }  

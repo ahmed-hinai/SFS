@@ -1,4 +1,4 @@
-CC = gcc
+CC = gcc-14
 CFLAGS = -Wall -Wextra -pedantic -lpthread
 OBJ = sfs.o  
 TARGET = sfs
